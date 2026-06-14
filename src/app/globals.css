@@ -741,10 +741,7 @@ input {
   }
 
   .hero-actions {
-    flex-direction: row;
-    justify-content: center;
-    gap: 0.6rem;
-    width: 100%;
+    display: none;
   }
 
   .btn-hero {
@@ -760,7 +757,7 @@ input {
     left: auto;
     transform: none;
     justify-content: center;
-    margin-top: -2rem;
+    margin-top: 1rem;
     margin-bottom: 1rem;
     z-index: 5;
   }

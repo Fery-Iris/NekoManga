@@ -665,16 +665,55 @@ input {
 
   /* -- Hero adjustments for mobile -- */
   .hero-carousel-container {
-    min-height: 400px;
-    height: 70vh;
+    height: auto;
+    min-height: unset;
+    max-height: unset;
+    overflow: visible;
+  }
+
+  .hero-slide {
+    position: relative;
+    display: none;
+    opacity: 1;
+    height: auto; /* Fix collapsing height */
+  }
+
+  .hero-slide.active {
+    display: block;
+  }
+
+  .hero-bg-blur {
+    position: absolute;
+    height: 100%;
+    width: 100%;
+  }
+
+  .hero-gradient-overlay {
+    position: absolute;
+    height: 100%;
+    width: 100%;
   }
 
   .hero-content {
-    padding: 2rem 1rem 0;
+    position: relative;
+    padding: 2rem 1rem 3.5rem;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
     align-items: center;
     text-align: center;
+    height: auto;
+  }
+
+  .hero-image-wrapper {
+    display: block;
+    width: 150px;
+    margin-bottom: 1.25rem;
+    transform: none;
+    order: 1;
+  }
+
+  .hero-slide.active .hero-image-wrapper {
+    transform: none;
   }
 
   .hero-info {
@@ -683,41 +722,47 @@ input {
     display: flex;
     flex-direction: column;
     align-items: center;
+    order: 2;
+  }
+
+  .hero-badge {
+    margin-bottom: 0.5rem;
+    font-size: 0.7rem;
   }
 
   .hero-title {
-    font-size: 1.8rem;
-    margin-bottom: 0.5rem;
+    font-size: 1.4rem;
+    margin-bottom: 0.75rem;
+    line-height: 1.3;
   }
 
   .hero-desc {
-    font-size: 0.9rem;
     display: none;
-  }
-
-  .hero-image-wrapper {
-    display: block;
-    width: 140px;
-    margin-bottom: 1rem;
-    transform: none;
-  }
-
-  .hero-slide.active .hero-image-wrapper {
-    transform: none;
   }
 
   .hero-actions {
     flex-direction: row;
     justify-content: center;
-    gap: 0.5rem;
+    gap: 0.6rem;
     width: 100%;
   }
 
   .btn-hero {
-    padding: 0.6rem 1rem;
+    padding: 0.65rem 1rem;
     font-size: 0.85rem;
     flex: 1;
     justify-content: center;
+  }
+
+  .hero-indicators {
+    position: relative;
+    bottom: auto;
+    left: auto;
+    transform: none;
+    justify-content: center;
+    margin-top: -2rem;
+    margin-bottom: 1rem;
+    z-index: 5;
   }
 
   /* -- Section titles -- */

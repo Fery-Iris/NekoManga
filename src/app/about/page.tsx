@@ -9,8 +9,8 @@ export default function AboutPage() {
       {/* Hero */}
       <ScrollReveal animation="fade-down" duration={700}>
         <div className="about-hero">
-          <div className="about-hero-icon">
-            <Cat size={48} />
+          <div className="about-hero-icon" style={{ overflow: 'hidden', borderRadius: '16px' }}>
+            <img src="/icon.png" alt="NekoMa Logo" style={{ width: '80px', height: '80px', objectFit: 'cover' }} />
           </div>
           <h1 className="about-hero-title">Tentang <span className="about-accent">NekoMa</span></h1>
           <p className="about-hero-subtitle">

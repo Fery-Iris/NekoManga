@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState, use } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { fetchChapterDetail } from '@/lib/api';
 import Loader from '@/components/Loader';
 import { ArrowLeft, ArrowRight, ScrollText, Image as ImageIcon } from 'lucide-react';
-import CommentSection from '@/components/CommentSection';
+import { useSession } from 'next-auth/react';
 
 interface ChapterData {
   title: string;
@@ -16,10 +16,31 @@ export default function ChapterReaderPage({ params }: { params: Promise<{ endpoi
   const { endpoint } = use(params);
   const fullEndpoint = decodeURIComponent(endpoint.join('/'));
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const comicEndpoint = searchParams.get('comic');
+  const chapterName = searchParams.get('cname');
+  
   const [chapter, setChapter] = useState<ChapterData | null>(null);
   const [loading, setLoading] = useState(true);
   const [readMode, setReadMode] = useState<'scroll' | 'single'>('scroll');
   const [currentPage, setCurrentPage] = useState(0);
+  
+  const { data: session } = useSession();
+
+  // Save history
+  useEffect(() => {
+    if (session?.user && comicEndpoint && chapterName) {
+      fetch('/api/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          comicEndpoint,
+          chapterName,
+          chapterEndpoint: fullEndpoint
+        })
+      }).catch(err => console.error('Failed to save history to DB', err));
+    }
+  }, [session, comicEndpoint, chapterName, fullEndpoint]);
 
   useEffect(() => {
     const loadChapter = async () => {
@@ -112,8 +133,6 @@ export default function ChapterReaderPage({ params }: { params: Promise<{ endpoi
         </button>
       </div>
 
-      {/* Interactive Comment Section */}
-      <CommentSection />
     </div>
   );
 }

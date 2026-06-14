@@ -329,7 +329,13 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
   const closePanel = () => setIsPanelOpen(false);
 
   if (!mounted) {
-    return <div style={{ visibility: 'hidden' }}>{children}</div>;
+    // Return children immediately to prevent blank screen.
+    // Apply default theme to html tag if possible.
+    return (
+      <ThemeContext.Provider value={{ activeTheme, setThemeById, isPanelOpen, togglePanel, closePanel }}>
+        {children}
+      </ThemeContext.Provider>
+    );
   }
 
   return (

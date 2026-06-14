@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { fetchComicInfo } from '@/lib/api';
 import Loader from '@/components/Loader';
 import { Star, BookOpen, Clock, User, Bookmark, Play, History } from 'lucide-react';
-import CommentSection from '@/components/CommentSection';
+import { useSession } from 'next-auth/react';
 import ScrollReveal from '@/components/ScrollReveal';
 
 interface Chapter {
@@ -34,9 +34,10 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
   const [comic, setComic] = useState<ComicData | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // LocalStorage States
+  // LocalStorage and DB States
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [recentChapter, setRecentChapter] = useState<{name: string, endpoint: string} | null>(null);
+  const { data: session } = useSession();
 
   useEffect(() => {
     const loadComic = async () => {
@@ -45,13 +46,38 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
         if (res.success) {
           setComic(res.data);
           
-          // Check localStorage after fetching comic
-          const bookmarks = JSON.parse(localStorage.getItem('nekoma_bookmarks') || '[]');
-          setIsBookmarked(bookmarks.some((b: any) => b.endpoint === fullEndpoint));
-          
-          const history = JSON.parse(localStorage.getItem('nekoma_history') || '{}');
-          if (history[fullEndpoint]) {
-            setRecentChapter(history[fullEndpoint]);
+          if (session?.user) {
+            // Fetch from database if logged in
+            try {
+              const [bmRes, histRes] = await Promise.all([
+                fetch('/api/bookmark'),
+                fetch('/api/history')
+              ]);
+              
+              if (bmRes.ok) {
+                const bookmarks = await bmRes.json();
+                setIsBookmarked(bookmarks.some((b: any) => b.comicEndpoint === fullEndpoint));
+              }
+              
+              if (histRes.ok) {
+                const historyList = await histRes.json();
+                const currentHist = historyList.find((h: any) => h.comicEndpoint === fullEndpoint);
+                if (currentHist) {
+                  setRecentChapter({ name: currentHist.chapterName, endpoint: currentHist.chapterEndpoint });
+                }
+              }
+            } catch (err) {
+              console.error('Failed to fetch DB data', err);
+            }
+          } else {
+            // Fallback to LocalStorage if guest
+            const bookmarks = JSON.parse(localStorage.getItem('nekoma_bookmarks') || '[]');
+            setIsBookmarked(bookmarks.some((b: any) => b.endpoint === fullEndpoint));
+            
+            const history = JSON.parse(localStorage.getItem('nekoma_history') || '{}');
+            if (history[fullEndpoint]) {
+              setRecentChapter(history[fullEndpoint]);
+            }
           }
         }
       } catch (error) {
@@ -62,25 +88,50 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
     };
     
     loadComic();
-  }, [fullEndpoint]);
+  }, [fullEndpoint, session]);
 
-  const toggleBookmark = () => {
+  const toggleBookmark = async () => {
     if (!comic) return;
-    const bookmarks = JSON.parse(localStorage.getItem('nekoma_bookmarks') || '[]');
     
-    if (isBookmarked) {
-      const newBookmarks = bookmarks.filter((b: any) => b.endpoint !== fullEndpoint);
-      localStorage.setItem('nekoma_bookmarks', JSON.stringify(newBookmarks));
-      setIsBookmarked(false);
+    if (session?.user) {
+      // Logic for authenticated user
+      try {
+        if (isBookmarked) {
+          await fetch(`/api/bookmark?endpoint=${encodeURIComponent(fullEndpoint)}`, { method: 'DELETE' });
+          setIsBookmarked(false);
+        } else {
+          await fetch('/api/bookmark', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              comicEndpoint: fullEndpoint,
+              comicName: comic.title,
+              comicThumbnail: comic.thumbnail,
+              comicType: comic.type
+            })
+          });
+          setIsBookmarked(true);
+        }
+      } catch (error) {
+        console.error('Failed to toggle bookmark', error);
+      }
     } else {
-      bookmarks.push({
-        title: comic.title,
-        endpoint: fullEndpoint,
-        thumbnail: comic.thumbnail,
-        type: comic.type
-      });
-      localStorage.setItem('nekoma_bookmarks', JSON.stringify(bookmarks));
-      setIsBookmarked(true);
+      // Logic for guest
+      const bookmarks = JSON.parse(localStorage.getItem('nekoma_bookmarks') || '[]');
+      if (isBookmarked) {
+        const newBookmarks = bookmarks.filter((b: any) => b.endpoint !== fullEndpoint);
+        localStorage.setItem('nekoma_bookmarks', JSON.stringify(newBookmarks));
+        setIsBookmarked(false);
+      } else {
+        bookmarks.push({
+          title: comic.title,
+          endpoint: fullEndpoint,
+          thumbnail: comic.thumbnail,
+          type: comic.type
+        });
+        localStorage.setItem('nekoma_bookmarks', JSON.stringify(bookmarks));
+        setIsBookmarked(true);
+      }
     }
   };
 
@@ -88,17 +139,20 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
     if (!comic || comic.chapter_list.length === 0) return;
     
     let targetEndpoint = '';
+    let chapterName = '';
     
     if (recentChapter) {
       targetEndpoint = recentChapter.endpoint;
+      chapterName = recentChapter.name;
     } else {
       // Baca dari awal (chapter paling bawah karena mangaku urutannya descending)
       const firstChapter = comic.chapter_list[comic.chapter_list.length - 1];
       targetEndpoint = firstChapter.endpoint;
+      chapterName = firstChapter.name;
     }
 
     const cleanEp = targetEndpoint.startsWith('/') ? targetEndpoint.slice(1) : targetEndpoint;
-    router.push(`/chapter/${encodeURIComponent(cleanEp)}`);
+    router.push(`/chapter/${encodeURIComponent(cleanEp)}?comic=${fullEndpoint}&cname=${encodeURIComponent(chapterName)}`);
   };
 
   if (loading) return <Loader />;
@@ -196,31 +250,28 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
                const isRead = recentChapter?.endpoint === chapter.endpoint;
                
                return (
-                <div 
-                  key={idx} 
-                  onClick={() => {
-                    const history = JSON.parse(localStorage.getItem('nekoma_history') || '{}');
-                    history[fullEndpoint] = { name: chapter.name, endpoint: chapter.endpoint };
-                    localStorage.setItem('nekoma_history', JSON.stringify(history));
-                    router.push(`/chapter/${encodeURIComponent(cleanEp)}`);
-                  }}
-                  className={`chapter-row ${isRead ? 'is-read' : ''}`}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="chapter-row-left">
-                    <span className="chapter-name">{chapter.name}</span>
-                    {isRead && <span className="read-badge">Terakhir Dibaca</span>}
-                  </div>
-                  <span className="chapter-date">{chapter.date}</span>
-                </div>
+                 <Link 
+                   href={`/chapter/${encodeURIComponent(cleanEp)}?comic=${fullEndpoint}&cname=${encodeURIComponent(chapter.name)}`} 
+                   className="chapter-item-epic glass-panel" 
+                   key={idx}
+                   onClick={() => {
+                     const history = JSON.parse(localStorage.getItem('nekoma_history') || '{}');
+                     history[fullEndpoint] = { name: chapter.name, endpoint: chapter.endpoint };
+                     localStorage.setItem('nekoma_history', JSON.stringify(history));
+                   }}
+                 >
+                   <div className="chapter-item-content">
+                     <span className={`chapter-name ${isRead ? 'read' : ''}`}>
+                       {chapter.name} {isRead && <span className="read-badge"><History size={12}/> Terakhir Dibaca</span>}
+                     </span>
+                     {chapter.date && <span className="chapter-date">{chapter.date}</span>}
+                   </div>
+                 </Link>
                );
             })}
           </div>
         </div>
 
-        <div style={{ marginTop: '4rem' }}>
-          <CommentSection />
-        </div>
       </div>
     </div>
   );

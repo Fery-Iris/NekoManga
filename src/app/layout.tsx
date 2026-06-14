@@ -3,6 +3,7 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import ThemeProvider from "@/components/ThemeProvider";
 import MouseTrail from "@/components/MouseTrail";
+import AuthProvider from "@/components/AuthProvider";
 
 export const metadata: Metadata = {
   title: "NekoMa - Baca Manga, Manhwa & Manhua Online",
@@ -28,31 +29,15 @@ export default function RootLayout({
         <meta name="theme-color" content="#0f172a" />
       </head>
       <body>
-        <ThemeProvider>
-          <MouseTrail />
-          <Navbar />
-          <main>{children}</main>
-        </ThemeProvider>
-        
-        {/* Service Worker Registration */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js').then(
-                    function(registration) {
-                      console.log('Service Worker registration successful');
-                    },
-                    function(err) {
-                      console.log('Service Worker registration failed: ', err);
-                    }
-                  );
-                });
-              }
-            `,
-          }}
-        />
+        <AuthProvider>
+          <ThemeProvider>
+            <MouseTrail />
+            <Navbar />
+            <main>{children}</main>
+          </ThemeProvider>
+        </AuthProvider>
+
+        {/* Service Worker Removed */}
       </body>
     </html>
   );

@@ -2,16 +2,41 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Cat, Mail, Lock, Code, Globe, ArrowRight } from 'lucide-react';
 import ScrollReveal from '@/components/ScrollReveal';
+import { signIn } from 'next-auth/react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert("Ini masih halaman UI (Frontend Only). Nanti kita sambungkan ke Prisma & Database!");
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const res = await signIn('credentials', {
+        email,
+        password,
+        redirect: false,
+      });
+
+      if (res?.error) {
+        setError(res.error);
+      } else {
+        router.push('/');
+        router.refresh();
+      }
+    } catch (err) {
+      setError('Terjadi kesalahan. Silakan coba lagi.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -25,6 +50,12 @@ export default function LoginPage() {
             <h2>Selamat Datang Kembali!</h2>
             <p>Login ke NekoMa untuk berinteraksi dan menyimpan komik favoritmu.</p>
           </div>
+
+          {error && (
+            <div className="auth-error" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', textAlign: 'center', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+              {error}
+            </div>
+          )}
 
           <form onSubmit={handleLogin} className="auth-form">
             <div className="input-group">
@@ -60,9 +91,9 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <button type="submit" className="auth-submit-btn flex-center">
-              <span>Masuk Sekarang</span>
-              <ArrowRight size={18} />
+            <button type="submit" className="auth-submit-btn flex-center" disabled={isLoading}>
+              <span>{isLoading ? 'Memproses...' : 'Masuk Sekarang'}</span>
+              {!isLoading && <ArrowRight size={18} />}
             </button>
           </form>
 

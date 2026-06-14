@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  password      String?
+  avatar        String?
+  image         String?
+  role          String    @default("USER") // USER, ADMIN
+  createdAt     DateTime  @default(now())
+  
+  bookmarks     Bookmark[]
+  histories     History[]
+  comments      Comment[]
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model Bookmark {
+  id             String   @id @default(uuid())
+  userId         String
+  comicEndpoint  String
+  comicName      String
+  comicThumbnail String?
+  comicType      String?
+  createdAt      DateTime @default(now())
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, comicEndpoint]) // 1 user hanya bisa bookmark 1 komik sekali
+}
+
+model History {
+  id              String   @id @default(uuid())
+  userId          String
+  comicEndpoint   String
+  chapterName     String
+  chapterEndpoint String
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, comicEndpoint]) // Menyimpan history terakhir per komik
+}
+
+model Comment {
+  id            String    @id @default(uuid())
+  userId        String
+  comicEndpoint String
+  text          String
+  createdAt     DateTime  @default(now())
+  
+  // Untuk nested replies
+  parentId      String?
+  parent        Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies       Comment[] @relation("CommentReplies")
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// NextAuth standard models
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?  @db.Text
+  access_token       String?  @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?  @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}

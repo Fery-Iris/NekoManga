@@ -36,10 +36,21 @@ function parseComicCards($: cheerio.CheerioAPI): Comic[] {
       endpoint = '/' + endpoint;
     }
 
+    const titleEl = $el.find('.mk-card__title').clone();
+    titleEl.find('.mk-badge--tipe').remove();
+    titleEl.find('.mk-badge').remove();
+    
+    let titleText = titleEl.text().replace(/\s+/g, ' ').trim();
+    // Sometimes the type is just appended at the beginning without a specific class in some designs
+    const typeText = $el.find('.mk-badge--tipe').text().trim();
+    if (typeText && titleText.startsWith(typeText)) {
+      titleText = titleText.substring(typeText.length).trim();
+    }
+
     const comic: Comic = {
-      title: $el.find('.mk-card__title').text().trim(),
+      title: titleText,
       image: $el.find('img').attr('src') || '',
-      type: $el.find('.mk-badge--tipe').text().trim(),
+      type: typeText,
       endpoint,
     };
 

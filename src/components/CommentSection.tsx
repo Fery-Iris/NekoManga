@@ -21,49 +21,7 @@ interface Comment {
   replies?: Comment[];
 }
 
-const MOCK_COMMENTS: Comment[] = [
-  {
-    id: '1',
-    user: 'Satoru Gojo',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Gojo',
-    text: 'Chapter ini gila banget! Art-nya makin kesini makin dewa 🔥',
-    time: '2 jam yang lalu',
-    emotes: { like: 124, love: 56, haha: 2, wow: 89 },
-    userReacted: null,
-    replies: [
-      {
-        id: '1-1',
-        user: 'Itadori Yuji',
-        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Itadori',
-        text: 'Bener banget bang, panel terakhir merinding!',
-        time: '1 jam yang lalu',
-        emotes: { like: 45, love: 12, haha: 0, wow: 0 },
-        userReacted: null,
-        replies: []
-      }
-    ]
-  },
-  {
-    id: '2',
-    user: 'MangaReader99',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Reader',
-    text: 'Plot twist di halaman terakhir bikin nggak bisa tidur mikirin chapter minggu depan.',
-    time: '5 jam yang lalu',
-    emotes: { like: 45, love: 12, haha: 0, wow: 150 },
-    userReacted: null,
-    replies: []
-  },
-  {
-    id: '3',
-    user: 'KucingOren',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Oren',
-    text: 'Kapan chapter selanjutnya rilis min? Ga sabar nih!',
-    time: '6 jam yang lalu',
-    emotes: { like: 12, love: 0, haha: 3, wow: 0 },
-    userReacted: null,
-    replies: []
-  }
-];
+const MOCK_COMMENTS: Comment[] = [];
 
 const COMMENTS_PER_PAGE = 3;
 

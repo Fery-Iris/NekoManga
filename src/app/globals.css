@@ -741,25 +741,15 @@ input {
   }
 
   .hero-actions {
-    display: none;
-  }
-
-  .btn-hero {
-    padding: 0.65rem 1rem;
-    font-size: 0.85rem;
-    flex: 1;
-    justify-content: center;
+    display: none !important;
   }
 
   .hero-indicators {
-    position: relative;
-    bottom: auto;
-    left: auto;
-    transform: none;
-    justify-content: center;
-    margin-top: 1rem;
-    margin-bottom: 1rem;
-    z-index: 5;
+    display: none !important;
+  }
+
+  .mouse-trail-canvas {
+    display: none !important;
   }
 
   /* -- Section titles -- */

@@ -6,6 +6,7 @@ import { fetchChapterDetail } from '@/lib/api';
 import Loader from '@/components/Loader';
 import { ArrowLeft, ArrowRight, ScrollText, Image as ImageIcon } from 'lucide-react';
 import { useSession } from 'next-auth/react';
+import CommentSection from '@/components/CommentSection';
 
 interface ChapterData {
   title: string;
@@ -133,6 +134,8 @@ export default function ChapterReaderPage({ params }: { params: Promise<{ endpoi
         </button>
       </div>
 
+      {/* Interactive Comment Section */}
+      <CommentSection />
     </div>
   );
 }

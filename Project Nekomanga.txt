@@ -1,0 +1,10 @@
+FITUR YANG AKAN DI TAMBAHKAN KE DALAM PROJECT MANGA INI.
+1. Tambahkan Login Page
+2. Tambahkan kolom komentar interaktif pada setiap manga yang dipilih beserta reaksi reaksi emote.
+3. Tambahkan Gaya Membaca manga nya, seperti geser full halaman dan geser satu satu
+4. Harus Responsif dengan mobile
+5. Ini Next.js harus bisa install di mobile agar terlihat seperti apk padahal tidak.
+6. Generate Logo title url yang sesuai dengan tema.
+7. Ada Fitur balas komentar
+8. Fitur halaman not found yang sangat interaktif 
+9. fitur my profile.

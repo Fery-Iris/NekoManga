@@ -1,0 +1,16 @@
+{
+  "name": "NekoMa - Baca Manga Online",
+  "short_name": "NekoMa",
+  "description": "Baca manga, manhwa, dan manhua online gratis dengan koleksi terlengkap.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

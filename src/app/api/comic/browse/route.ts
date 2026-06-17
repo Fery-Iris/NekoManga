@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getComicByLetter } from '@/lib/scraper';
+import { getComicByLetter, advancedFilterManga } from '@/lib/scraper';
 import { apiSuccess, apiError } from '@/lib/response';
 
 export async function GET(request: NextRequest) {
@@ -10,12 +10,22 @@ export async function GET(request: NextRequest) {
     const pageStr = searchParams.get('page') || '1';
     const page = parseInt(pageStr, 10) || 1;
 
-    const data = await getComicByLetter(letter, tipe, page);
+    const orderby = searchParams.get('orderby') || '';
+    const genre = searchParams.get('genre') || '';
+    const status = searchParams.get('status') || '';
+
+    let data;
+    if (orderby || genre || status || !letter) {
+      data = await advancedFilterManga(orderby, tipe, genre, status, page);
+    } else {
+      data = await getComicByLetter(letter, tipe, page);
+    }
+
     if (!data || data.length === 0) {
       return apiError('Data not found');
     }
 
-    return apiSuccess(data, 'Get Comic By Letter');
+    return apiSuccess(data, 'Get Browse Manga');
   } catch (error) {
     return apiError(`Error: ${error instanceof Error ? error.message : 'Unknown'}`, 500);
   }

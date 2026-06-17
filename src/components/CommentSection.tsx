@@ -1,195 +1,186 @@
 'use client';
 
-import { useState } from 'react';
-import { Send, ThumbsUp, Heart, Laugh, SmilePlus, MessageSquare } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Send, MessageSquare } from 'lucide-react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 
-interface Emotes {
-  like: number;
-  love: number;
-  haha: number;
-  wow: number;
+interface User {
+  name: string | null;
+  avatar: string | null;
+  image: string | null;
 }
 
 interface Comment {
   id: string;
-  user: string;
-  avatar: string;
+  userId: string;
+  comicEndpoint: string;
   text: string;
-  time: string;
-  emotes: Emotes;
-  userReacted?: keyof Emotes | null;
+  createdAt: string;
+  user: User;
   replies?: Comment[];
 }
 
-const MOCK_COMMENTS: Comment[] = [];
-
-const COMMENTS_PER_PAGE = 3;
-
-export default function CommentSection() {
-  const [comments, setComments] = useState<Comment[]>(MOCK_COMMENTS);
+export default function CommentSection({ endpoint }: { endpoint: string }) {
+  const { data: session } = useSession();
+  const router = useRouter();
+  const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [replyText, setReplyText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Helper function to recursively find and update emotes (supports 1 level deep for now, or deeper if we use recursion)
-  const updateReact = (commentsList: Comment[], commentId: string, emoteType: keyof Emotes): Comment[] => {
-    return commentsList.map(c => {
-      if (c.id === commentId) {
-        const isCurrentlyReacted = c.userReacted === emoteType;
-        const newEmotes = { ...c.emotes };
-        if (c.userReacted && c.userReacted !== emoteType) {
-          newEmotes[c.userReacted]--;
-        }
-        if (isCurrentlyReacted) {
-          newEmotes[emoteType]--;
-        } else {
-          newEmotes[emoteType]++;
-        }
-        return { ...c, emotes: newEmotes, userReacted: isCurrentlyReacted ? null : emoteType };
+  const fetchComments = async () => {
+    try {
+      const res = await fetch(`/api/comments?endpoint=${encodeURIComponent(endpoint)}`);
+      const data = await res.json();
+      if (data.success) {
+        setComments(data.data);
       }
-      if (c.replies) {
-        return { ...c, replies: updateReact(c.replies, commentId, emoteType) };
-      }
-      return c;
-    });
+    } catch (error) {
+      console.error('Failed to fetch comments', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleReact = (commentId: string, emoteType: keyof Emotes) => {
-    setComments(prev => updateReact(prev, commentId, emoteType));
-  };
+  useEffect(() => {
+    fetchComments();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endpoint]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newComment.trim()) return;
+    if (!newComment.trim() || !session) return;
 
-    const comment: Comment = {
-      id: Date.now().toString(),
-      user: 'Guest User',
-      avatar: '/icon.png',
-      text: newComment,
-      time: 'Baru saja',
-      emotes: { like: 0, love: 0, haha: 0, wow: 0 },
-      userReacted: null,
-      replies: []
-    };
-
-    setComments([comment, ...comments]);
-    setNewComment('');
-    setCurrentPage(1); 
-  };
-
-  const handleReplySubmit = (e: React.FormEvent, parentId: string) => {
-    e.preventDefault();
-    if (!replyText.trim()) return;
-
-    const reply: Comment = {
-      id: Date.now().toString(),
-      user: 'Guest User',
-      avatar: '/icon.png',
-      text: replyText,
-      time: 'Baru saja',
-      emotes: { like: 0, love: 0, haha: 0, wow: 0 },
-      userReacted: null,
-      replies: []
-    };
-
-    setComments(prev => prev.map(c => {
-      if (c.id === parentId) {
-        return { ...c, replies: [...(c.replies || []), reply] };
+    try {
+      const res = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ comicEndpoint: endpoint, text: newComment }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewComment('');
+        fetchComments();
       }
-      return c;
-    }));
-    setReplyingTo(null);
-    setReplyText('');
+    } catch (error) {
+      console.error('Failed to post comment', error);
+    }
   };
 
-  const renderComment = (comment: Comment, isReply = false) => (
-    <div key={comment.id} className={`comment-card glass-panel ${isReply ? 'comment-reply' : ''}`} style={isReply ? { marginLeft: '3rem', marginTop: '1rem', background: 'rgba(255, 255, 255, 0.03)' } : {}}>
-      <img src={comment.avatar} alt={comment.user} className="comment-avatar" />
-      <div className="comment-content">
-        <div className="comment-header">
-          <span className="comment-user">{comment.user}</span>
-          <span className="comment-time">{comment.time}</span>
-        </div>
-        <p className="comment-text">{comment.text}</p>
-        
-        <div className="comment-emotes">
-          <button onClick={() => handleReact(comment.id, 'like')} className={`emote-btn flex-center ${comment.userReacted === 'like' ? 'active' : ''}`}>
-            <ThumbsUp size={14} /> <span>{comment.emotes.like}</span>
-          </button>
-          <button onClick={() => handleReact(comment.id, 'love')} className={`emote-btn flex-center ${comment.userReacted === 'love' ? 'active' : ''}`}>
-            <Heart size={14} /> <span>{comment.emotes.love}</span>
-          </button>
-          <button onClick={() => handleReact(comment.id, 'wow')} className={`emote-btn flex-center ${comment.userReacted === 'wow' ? 'active' : ''}`}>
-            <SmilePlus size={14} /> <span>{comment.emotes.wow}</span>
-          </button>
-          <button onClick={() => handleReact(comment.id, 'haha')} className={`emote-btn flex-center ${comment.userReacted === 'haha' ? 'active' : ''}`}>
-            <Laugh size={14} /> <span>{comment.emotes.haha}</span>
-          </button>
+  const handleReplySubmit = async (e: React.FormEvent, parentId: string) => {
+    e.preventDefault();
+    if (!replyText.trim() || !session) return;
+
+    try {
+      const res = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ comicEndpoint: endpoint, text: replyText, parentId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setReplyText('');
+        setReplyingTo(null);
+        fetchComments();
+      }
+    } catch (error) {
+      console.error('Failed to post reply', error);
+    }
+  };
+
+  const renderComment = (comment: Comment, isReply = false) => {
+    const avatar = comment.user.avatar || comment.user.image || '/icon.png';
+    const name = comment.user.name || 'Anonymous';
+    const date = new Date(comment.createdAt).toLocaleDateString('id-ID', { year: 'numeric', month: 'short', day: 'numeric' });
+    
+    return (
+      <div key={comment.id} className={`comment-card glass-panel ${isReply ? 'comment-reply' : ''}`} style={isReply ? { marginLeft: '3rem', marginTop: '1rem', background: 'rgba(255, 255, 255, 0.03)' } : {}}>
+        <img src={avatar} alt={name} className="comment-avatar" />
+        <div className="comment-content">
+          <div className="comment-header">
+            <span className="comment-user">{name}</span>
+            <span className="comment-time">{date}</span>
+          </div>
+          <p className="comment-text">{comment.text}</p>
           
-          {!isReply && (
-            <button 
-              onClick={() => { setReplyingTo(replyingTo === comment.id ? null : comment.id); setReplyText(''); }} 
-              className="emote-btn flex-center reply-btn"
-            >
-              <MessageSquare size={14} /> <span>Balas</span>
-            </button>
+          <div className="comment-emotes">
+            {!isReply && session && (
+              <button 
+                onClick={() => { setReplyingTo(replyingTo === comment.id ? null : comment.id); setReplyText(''); }} 
+                className="emote-btn flex-center reply-btn"
+              >
+                <MessageSquare size={14} /> <span>Balas</span>
+              </button>
+            )}
+          </div>
+
+          {/* Reply Input Form */}
+          {replyingTo === comment.id && !isReply && session && (
+            <form onSubmit={(e) => handleReplySubmit(e, comment.id)} className="comment-form glass-panel reply-form" style={{ marginTop: '1rem', padding: '1rem' }}>
+               <img src={session.user?.image || "/icon.png"} alt="You" className="comment-avatar" style={{ width: '30px', height: '30px' }} />
+               <div className="comment-input-wrapper" style={{ height: '40px' }}>
+                 <input 
+                   type="text" 
+                   placeholder={`Balas @${name}...`}
+                   value={replyText}
+                   onChange={(e) => setReplyText(e.target.value)}
+                   className="comment-input"
+                   autoFocus
+                 />
+                 <button type="submit" className="comment-submit flex-center" disabled={!replyText.trim()}>
+                   <Send size={16} />
+                 </button>
+               </div>
+            </form>
+          )}
+
+          {/* Render nested replies */}
+          {comment.replies && comment.replies.length > 0 && (
+            <div className="replies-container">
+              {comment.replies.map(reply => renderComment(reply, true))}
+            </div>
           )}
         </div>
-
-        {/* Reply Input Form */}
-        {replyingTo === comment.id && !isReply && (
-          <form onSubmit={(e) => handleReplySubmit(e, comment.id)} className="comment-form glass-panel reply-form" style={{ marginTop: '1rem', padding: '1rem' }}>
-             <img src="/icon.png" alt="You" className="comment-avatar" style={{ width: '30px', height: '30px' }} />
-             <div className="comment-input-wrapper" style={{ height: '40px' }}>
-               <input 
-                 type="text" 
-                 placeholder={`Balas @${comment.user}...`}
-                 value={replyText}
-                 onChange={(e) => setReplyText(e.target.value)}
-                 className="comment-input"
-                 autoFocus
-               />
-               <button type="submit" className="comment-submit flex-center" disabled={!replyText.trim()}>
-                 <Send size={16} />
-               </button>
-             </div>
-          </form>
-        )}
-
-        {/* Render nested replies */}
-        {comment.replies && comment.replies.length > 0 && (
-          <div className="replies-container">
-            {comment.replies.map(reply => renderComment(reply, true))}
-          </div>
-        )}
       </div>
-    </div>
-  );
+    );
+  };
 
-  const totalPages = Math.ceil(comments.length / COMMENTS_PER_PAGE);
-  const currentComments = comments.slice((currentPage - 1) * COMMENTS_PER_PAGE, currentPage * COMMENTS_PER_PAGE);
+  if (isLoading) return <div className="comment-section glass-panel" style={{ padding: '2rem', textAlign: 'center' }}>Memuat komentar...</div>;
+
+  const totalPages = Math.ceil(comments.length / 5);
+  const currentComments = comments.slice((currentPage - 1) * 5, currentPage * 5);
 
   return (
     <div className="comment-section">
       <h3 className="comment-title">💬 {comments.length} Komentar</h3>
       
-      <form onSubmit={handleSubmit} className="comment-form glass-panel">
-        <img src="/icon.png" alt="You" className="comment-avatar" />
-        <div className="comment-input-wrapper">
-          <input 
-            type="text" 
-            placeholder="Tulis komentarmu tentang chapter ini..." 
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            className="comment-input"
-          />
-          <button type="submit" className="comment-submit flex-center" disabled={!newComment.trim()}>
-            <Send size={18} />
+      {session ? (
+        <form onSubmit={handleSubmit} className="comment-form glass-panel">
+          <img src={session.user?.image || "/icon.png"} alt="You" className="comment-avatar" />
+          <div className="comment-input-wrapper">
+            <input 
+              type="text" 
+              placeholder="Tulis komentarmu..." 
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              className="comment-input"
+            />
+            <button type="submit" className="comment-submit flex-center" disabled={!newComment.trim()}>
+              <Send size={18} />
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center', borderRadius: '12px', marginBottom: '2rem' }}>
+          <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>Anda harus login untuk bisa memberikan komentar.</p>
+          <button onClick={() => router.push('/login')} className="reader-footer-btn" style={{ margin: '0 auto' }}>
+            Login Sekarang
           </button>
         </div>
-      </form>
+      )}
 
       <div className="comment-list">
         {currentComments.map(c => renderComment(c))}

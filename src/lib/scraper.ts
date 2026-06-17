@@ -5,7 +5,7 @@ import * as cheerio from 'cheerio';
 import { Comic, ComicInfo, Chapter, ChapterDetail, Genre } from './types';
 import { getCache, setCache } from './cache';
 
-const BASE_URL = process.env.BASE_URL || 'https://mangaku.top/';
+const BASE_URL = process.env.BASE_URL || 'https://mangaku.guru/';
 
 async function fetchHTML(url: string): Promise<cheerio.CheerioAPI> {
   const res = await fetch(url, {
@@ -99,6 +99,29 @@ export async function getComicByLetter(letter: string, tipe: string, page: numbe
   return result;
 }
 
+export async function advancedFilterManga(orderby: string, tipe: string, genre: string, status: string, page: number): Promise<Comic[]> {
+  const cacheKey = `adv_${orderby}_${tipe}_${genre}_${status}_${page}`;
+  const cached = getCache<Comic[]>(cacheKey);
+  if (cached) return cached;
+
+  let url = page > 1
+    ? `${BASE_URL}komik/page/${page}/`
+    : `${BASE_URL}komik/`;
+
+  const params: string[] = [];
+  if (orderby) params.push(`orderby=${orderby}`);
+  if (tipe) params.push(`tipe=${tipe}`);
+  if (genre) params.push(`genre=${genre}`);
+  if (status) params.push(`status=${status}`);
+  if (params.length > 0) url += '?' + params.join('&');
+
+  const $ = await fetchHTML(url);
+  const result = parseComicCards($);
+
+  setCache(cacheKey, result);
+  return result;
+}
+
 export async function getComicInfo(endpoint: string): Promise<ComicInfo> {
   const cacheKey = `comic_info_${endpoint}`;
   const cached = getCache<ComicInfo>(cacheKey);
@@ -172,7 +195,7 @@ export async function searchManga(query: string, genre?: string): Promise<Comic[
   
   // Jika sumber asli menggunakan /komik/ untuk advanced filter
   if (genre) {
-    url = `${BASE_URL}komik/?s=${encodeURIComponent(query)}&genre[]=${encodeURIComponent(genre)}`;
+    url = `${BASE_URL}komik/?s=${encodeURIComponent(query)}&genre=${encodeURIComponent(genre)}`;
   }
 
   const $ = await fetchHTML(url);
@@ -191,7 +214,7 @@ export async function getAllGenre(): Promise<Genre[]> {
   const $ = await fetchHTML(url);
   const genres: Genre[] = [];
 
-  $('select[name="genre[]"] option').each((_, el) => {
+  $('select[name="genre[]"] option, select[name="genre"] option').each((_, el) => {
     const $el = $(el);
     const value = $el.attr('value');
     if (value) {
@@ -330,7 +353,28 @@ export async function getChapterDetail(endpoint: string): Promise<ChapterDetail>
 
   const title = $('.mk-chapter__title').first().text().trim();
 
-  const detail: ChapterDetail = { title, image: images };
+  let next_chapter: string | undefined;
+  let prev_chapter: string | undefined;
+
+  $('a:contains("Next")').each((_, el) => {
+    const href = $(el).attr('href');
+    if (href && !next_chapter) {
+      let ep = href.startsWith('http') ? href.replace(BASE_URL, '') : href;
+      ep = ep.replace(/^\//, '');
+      if (ep && ep !== '#') next_chapter = ep;
+    }
+  });
+
+  $('a:contains("Prev")').each((_, el) => {
+    const href = $(el).attr('href');
+    if (href && !prev_chapter) {
+      let ep = href.startsWith('http') ? href.replace(BASE_URL, '') : href;
+      ep = ep.replace(/^\//, '');
+      if (ep && ep !== '#') prev_chapter = ep;
+    }
+  });
+
+  const detail: ChapterDetail = { title, image: images, next_chapter, prev_chapter };
   setCache(cacheKey, detail, 30 * 60 * 1000); // 30 min for chapter images
   return detail;
 }

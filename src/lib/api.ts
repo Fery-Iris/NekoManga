@@ -42,11 +42,14 @@ export const fetchChapterDetail = async (endpoint: string) => {
   return res.json();
 };
 
-export const fetchBrowse = async (letter: string = '', tipe: string = '', page: number = 1) => {
+export const fetchBrowse = async (paramsObj: { orderby?: string, tipe?: string, genre?: string, status?: string, page?: number } = {}) => {
   const params = new URLSearchParams();
-  if (letter) params.append('huruf', letter);
-  if (tipe) params.append('tipe', tipe);
-  if (page > 1) params.append('page', page.toString());
+  if (paramsObj.orderby) params.append('orderby', paramsObj.orderby);
+  if (paramsObj.tipe) params.append('tipe', paramsObj.tipe);
+  if (paramsObj.genre) params.append('genre', paramsObj.genre);
+  if (paramsObj.status) params.append('status', paramsObj.status);
+  if (paramsObj.page && paramsObj.page > 1) params.append('page', paramsObj.page.toString());
+  
   const res = await fetch(`/api/comic/browse?${params.toString()}`);
   return res.json();
 };

@@ -1399,9 +1399,19 @@ input {
 
 @media (max-width: 600px) {
   .browse-title { font-size: 1.4rem; }
-  .az-btn { width: 32px; height: 32px; font-size: 0.7rem; }
-  .az-btn:first-child { padding: 0 8px; font-size: 0.65rem; }
-  .browse-az-bar { gap: 0.2rem; padding: 0.75rem; }
+  .az-btn { width: 32px; height: 32px; font-size: 0.7rem; flex-shrink: 0; }
+  .az-btn:first-child { padding: 0 8px; font-size: 0.65rem; flex-shrink: 0; }
+  .browse-az-bar { 
+    gap: 0.3rem; 
+    padding: 0.75rem; 
+    flex-wrap: nowrap; 
+    overflow-x: auto; 
+    justify-content: flex-start; 
+    -webkit-overflow-scrolling: touch;
+  }
+  .browse-az-bar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* ============ COMIC DETAIL PAGE ============ */

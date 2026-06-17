@@ -274,7 +274,7 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
         </div>
 
         <div style={{ marginTop: '4rem' }}>
-          <CommentSection />
+          <CommentSection endpoint={fullEndpoint} />
         </div>
       </div>
     </div>

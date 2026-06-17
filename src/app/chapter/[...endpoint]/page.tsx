@@ -11,6 +11,8 @@ import CommentSection from '@/components/CommentSection';
 interface ChapterData {
   title: string;
   image: string[];
+  next_chapter?: string;
+  prev_chapter?: string;
 }
 
 export default function ChapterReaderPage({ params }: { params: Promise<{ endpoint: string[] }> }) {
@@ -129,13 +131,31 @@ export default function ChapterReaderPage({ params }: { params: Promise<{ endpoi
       
       <div className="reader-footer glass-panel">
         <p>Akhir dari {chapter.title}</p>
-        <button onClick={() => router.back()} className="reader-footer-btn" id="go-back-btn">
-          Kembali ke Daftar Chapter
-        </button>
+        <div className="chapter-navigation" style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', flexWrap: 'wrap', justifyContent: 'center', width: '100%', maxWidth: '600px' }}>
+          {chapter.prev_chapter ? (
+            <button onClick={() => router.push(`/chapter/${chapter.prev_chapter}${comicEndpoint ? `?comic=${comicEndpoint}` : ''}`)} className="reader-footer-btn flex-center" style={{ flex: 1, minWidth: '160px', gap: '0.5rem' }}>
+              <ArrowLeft size={16} /> Sebelumnya
+            </button>
+          ) : (
+             <div style={{ flex: 1, minWidth: '160px' }}></div>
+          )}
+          
+          <button onClick={() => comicEndpoint ? router.push(`/comic/${comicEndpoint}`) : router.back()} className="reader-footer-btn" id="go-back-btn" style={{ flex: 1, minWidth: '160px' }}>
+            Daftar Chapter
+          </button>
+          
+          {chapter.next_chapter ? (
+            <button onClick={() => router.push(`/chapter/${chapter.next_chapter}${comicEndpoint ? `?comic=${comicEndpoint}` : ''}`)} className="reader-footer-btn flex-center" style={{ flex: 1, minWidth: '160px', gap: '0.5rem', background: 'var(--primary-accent)' }}>
+              Berikutnya <ArrowRight size={16} />
+            </button>
+          ) : (
+             <div style={{ flex: 1, minWidth: '160px' }}></div>
+          )}
+        </div>
       </div>
 
       {/* Interactive Comment Section */}
-      <CommentSection />
+      <CommentSection endpoint={fullEndpoint} />
     </div>
   );
 }

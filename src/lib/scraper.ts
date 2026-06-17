@@ -163,12 +163,18 @@ export async function getComicInfo(endpoint: string): Promise<ComicInfo> {
   return comicInfo;
 }
 
-export async function searchManga(query: string): Promise<Comic[]> {
-  const cacheKey = `search_${query}`;
+export async function searchManga(query: string, genre?: string): Promise<Comic[]> {
+  const cacheKey = `search_${query}_${genre || 'all'}`;
   const cached = getCache<Comic[]>(cacheKey);
   if (cached) return cached;
 
-  const url = `${BASE_URL}?s=${encodeURIComponent(query)}`;
+  let url = `${BASE_URL}?s=${encodeURIComponent(query)}`;
+  
+  // Jika sumber asli menggunakan /komik/ untuk advanced filter
+  if (genre) {
+    url = `${BASE_URL}komik/?s=${encodeURIComponent(query)}&genre[]=${encodeURIComponent(genre)}`;
+  }
+
   const $ = await fetchHTML(url);
   const result = parseComicCards($);
 
@@ -181,19 +187,34 @@ export async function getAllGenre(): Promise<Genre[]> {
   const cached = getCache<Genre[]>(cacheKey);
   if (cached) return cached;
 
-  const $ = await fetchHTML(BASE_URL);
+  const url = `${BASE_URL}komik/`;
+  const $ = await fetchHTML(url);
   const genres: Genre[] = [];
 
-  $('.mk-popover__list a').each((_, el) => {
+  $('select[name="genre[]"] option').each((_, el) => {
     const $el = $(el);
-    const href = $el.attr('href') || '';
-    if (href.includes('/tipe/')) {
+    const value = $el.attr('value');
+    if (value) {
       genres.push({
-        endpoint: href.replace(`${BASE_URL}tipe/`, ''),
-        title: $el.find('span').text().trim(),
+        endpoint: value,
+        title: $el.text().trim(),
       });
     }
   });
+
+  // Jika tidak ditemukan di form, fallback ke tipe (Manga, Manhwa, Manhua)
+  if (genres.length === 0) {
+    $('.mk-popover__list a').each((_, el) => {
+      const $el = $(el);
+      const href = $el.attr('href') || '';
+      if (href.includes('/tipe/')) {
+        genres.push({
+          endpoint: href.replace(`${BASE_URL}tipe/`, '').replace(/\//g, ''),
+          title: $el.find('span').text().trim(),
+        });
+      }
+    });
+  }
 
   setCache(cacheKey, genres, 30 * 60 * 1000); // 30 min for genres
   return genres;

@@ -16,8 +16,17 @@ export const fetchNewest = async (page: number = 1) => {
   return res.json();
 };
 
-export const fetchSearch = async (query: string) => {
-  const res = await fetch(`/api/comic/search/${encodeURIComponent(query)}`);
+export const fetchSearch = async (query: string, genre?: string) => {
+  let url = `/api/comic/search/${encodeURIComponent(query || ' ')}`;
+  if (genre && genre !== 'Semua') {
+    url += `?genre=${encodeURIComponent(genre)}`;
+  }
+  const res = await fetch(url);
+  return res.json();
+};
+
+export const fetchGenres = async () => {
+  const res = await fetch('/api/comic/genre');
   return res.json();
 };
 

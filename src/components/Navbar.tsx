@@ -109,33 +109,32 @@ export default function Navbar() {
       </nav>
 
       {/* ===== MOBILE BOTTOM NAV ===== */}
-      <nav className="mobile-bottom-nav glass-panel">
-        <Link href="/" className={`bottom-nav-item ${pathname === '/' ? 'active' : ''}`}>
-          <Home size={22} />
-          <span>Beranda</span>
-        </Link>
-        <Link href="/browse" className={`bottom-nav-item ${pathname === '/browse' ? 'active' : ''}`}>
-          <Library size={22} />
-          <span>Daftar</span>
-        </Link>
-        <button 
-          className="bottom-nav-item bottom-nav-search"
-          onClick={() => { setSearchOpen(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-        >
-          <div className="bottom-nav-search-icon flex-center">
-            <Search size={22} />
-          </div>
-          <span>Cari</span>
-        </button>
-        <Link href="/about" className={`bottom-nav-item ${pathname === '/about' ? 'active' : ''}`}>
-          <Info size={22} />
-          <span>About</span>
-        </Link>
-        <Link href="/profile" className={`bottom-nav-item ${pathname === '/profile' ? 'active' : ''}`}>
-          <User size={22} />
-          <span>Profil</span>
-        </Link>
-      </nav>
+      {!pathname?.startsWith('/chapter') && (
+        <nav className="mobile-bottom-nav glass-panel">
+          <Link href="/" className={`bottom-nav-item ${pathname === '/' ? 'active' : ''}`}>
+            <Home size={22} />
+            <span>Beranda</span>
+          </Link>
+          <Link href="/browse" className={`bottom-nav-item ${pathname === '/browse' ? 'active' : ''}`}>
+            <Library size={22} />
+            <span>Daftar</span>
+          </Link>
+          <Link href="/search" className={`bottom-nav-item ${pathname === '/search' ? 'active' : ''}`}>
+            <div className="bottom-nav-search-icon flex-center">
+              <Search size={22} />
+            </div>
+            <span>Cari</span>
+          </Link>
+          <Link href="/about" className={`bottom-nav-item ${pathname === '/about' ? 'active' : ''}`}>
+            <Info size={22} />
+            <span>About</span>
+          </Link>
+          <Link href="/profile" className={`bottom-nav-item ${pathname === '/profile' ? 'active' : ''}`}>
+            <User size={22} />
+            <span>Profil</span>
+          </Link>
+        </nav>
+      )}
     </>
   );
 }

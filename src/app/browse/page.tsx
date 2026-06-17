@@ -5,6 +5,8 @@ import { fetchBrowse } from '@/lib/api';
 import ComicCard from '@/components/ComicCard';
 import Loader from '@/components/Loader';
 import ScrollReveal from '@/components/ScrollReveal';
+import Pagination from '@/components/Pagination';
+import { SkeletonCard } from '@/components/Skeleton';
 
 interface Comic {
   title: string;
@@ -29,24 +31,26 @@ export default function BrowsePage() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
 
-  const loadComics = useCallback(async (letter: string, tipe: string, pg: number, append = false) => {
+  const loadComics = useCallback(async (letter: string, tipe: string, pg: number) => {
     setLoading(true);
     try {
       const data = await fetchBrowse(letter, tipe, pg);
       if (data.success) {
         const newComics = data.data || [];
-        setComics(prev => append ? [...prev, ...newComics] : newComics);
-        setHasMore(newComics.length >= 20);
+        setComics(newComics);
+        setHasMore(newComics.length >= 20); // typical page size
       } else {
-        if (!append) setComics([]);
+        setComics([]);
         setHasMore(false);
       }
     } catch (error) {
       console.error('Error fetching browse data:', error);
-      if (!append) setComics([]);
+      setComics([]);
       setHasMore(false);
     } finally {
       setLoading(false);
+      // scroll to top after loading
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, []);
 
@@ -63,10 +67,9 @@ export default function BrowsePage() {
     setActiveType(tipe);
   };
 
-  const handleLoadMore = () => {
-    const nextPage = page + 1;
-    setPage(nextPage);
-    loadComics(activeLetter, activeType, nextPage, true);
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
+    loadComics(activeLetter, activeType, newPage);
   };
 
   return (
@@ -130,8 +133,12 @@ export default function BrowsePage() {
       )}
 
       {/* Results */}
-      {loading && comics.length === 0 ? (
-        <Loader />
+      {loading ? (
+        <div className="grid-responsive" style={{ marginTop: '2rem' }}>
+          {Array.from({ length: 10 }).map((_, i) => (
+             <SkeletonCard key={i} />
+          ))}
+        </div>
       ) : comics.length === 0 ? (
         <div className="browse-empty">
           <p>😔 Tidak ditemukan komik untuk filter ini.</p>
@@ -139,7 +146,7 @@ export default function BrowsePage() {
       ) : (
         <>
           <div className="browse-count">
-            Menampilkan <strong>{comics.length}</strong> komik
+            Halaman {page} (Menampilkan {comics.length} komik)
           </div>
           <div className="grid-responsive">
             {comics.map((comic, idx) => (
@@ -148,18 +155,12 @@ export default function BrowsePage() {
               </ScrollReveal>
             ))}
           </div>
-          {hasMore && (
-            <div className="browse-load-more">
-              <button
-                className="load-more-btn"
-                onClick={handleLoadMore}
-                disabled={loading}
-                id="load-more-btn"
-              >
-                {loading ? 'Memuat...' : 'Muat Lebih Banyak'}
-              </button>
-            </div>
-          )}
+          
+          <Pagination 
+            currentPage={page} 
+            hasMore={hasMore} 
+            onPageChange={handlePageChange} 
+          />
         </>
       )}
     </div>

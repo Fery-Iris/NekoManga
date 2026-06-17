@@ -2025,6 +2025,28 @@ input {
   gap: 1rem;
   padding: 1.5rem;
   border-radius: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.comment-reply {
+  margin-left: 3rem;
+  margin-top: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.reply-form {
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.reply-avatar {
+  width: 30px;
+  height: 30px;
+}
+
+.reply-input-wrapper {
+  height: 40px;
 }
 
 .comment-content {
@@ -2052,6 +2074,8 @@ input {
   font-size: 0.95rem;
   line-height: 1.6;
   margin-bottom: 1rem;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .comment-emotes {
@@ -2633,4 +2657,29 @@ input {
 
 .skeleton-card .comic-cover {
   background-color: var(--glass-border);
+}
+
+@media (max-width: 480px) {
+  .comment-card {
+    padding: 1rem;
+    gap: 0.75rem;
+  }
+  .comment-avatar {
+    width: 36px;
+    height: 36px;
+  }
+  .comment-reply {
+    margin-left: 1rem;
+  }
+  .reply-form {
+    padding: 0.75rem;
+  }
+  .reply-avatar {
+    width: 24px;
+    height: 24px;
+  }
+  .comment-form {
+    padding: 0.75rem;
+    gap: 0.75rem;
+  }
 }

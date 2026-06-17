@@ -97,7 +97,7 @@ export default function CommentSection({ endpoint }: { endpoint: string }) {
     const date = new Date(comment.createdAt).toLocaleDateString('id-ID', { year: 'numeric', month: 'short', day: 'numeric' });
     
     return (
-      <div key={comment.id} className={`comment-card glass-panel ${isReply ? 'comment-reply' : ''}`} style={isReply ? { marginLeft: '3rem', marginTop: '1rem', background: 'rgba(255, 255, 255, 0.03)' } : {}}>
+      <div key={comment.id} className={`comment-card glass-panel ${isReply ? 'comment-reply' : ''}`}>
         <img src={avatar} alt={name} className="comment-avatar" />
         <div className="comment-content">
           <div className="comment-header">
@@ -119,9 +119,9 @@ export default function CommentSection({ endpoint }: { endpoint: string }) {
 
           {/* Reply Input Form */}
           {replyingTo === comment.id && !isReply && session && (
-            <form onSubmit={(e) => handleReplySubmit(e, comment.id)} className="comment-form glass-panel reply-form" style={{ marginTop: '1rem', padding: '1rem' }}>
-               <img src={session.user?.image || "/icon.png"} alt="You" className="comment-avatar" style={{ width: '30px', height: '30px' }} />
-               <div className="comment-input-wrapper" style={{ height: '40px' }}>
+            <form onSubmit={(e) => handleReplySubmit(e, comment.id)} className="comment-form glass-panel reply-form">
+               <img src={session.user?.image || "/icon.png"} alt="You" className="comment-avatar reply-avatar" />
+               <div className="comment-input-wrapper reply-input-wrapper">
                  <input 
                    type="text" 
                    placeholder={`Balas @${name}...`}

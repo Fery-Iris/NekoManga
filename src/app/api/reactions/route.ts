@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     });
 
     // Validasi agar tidak bernilai minus jika ada race condition saat 'remove' tanpa data valid
-    if (updated[type as keyof typeof updated] < 0) {
+    if ((updated[type as keyof typeof updated] as number) < 0) {
       await prisma.chapterReaction.update({
         where: { chapterEndpoint: endpoint },
         data: { [type]: 0 }

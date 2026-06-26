@@ -1,18 +1,49 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { Search, Library, Info, LogIn, Home, User, X } from 'lucide-react';
+import { Search, Library, Info, LogIn, Home, User, X, Loader2 } from 'lucide-react';
 import ThemePicker from './ThemePicker';
 import { useSession, signOut } from 'next-auth/react';
 
 export default function Navbar() {
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
   const router = useRouter();
   const pathname = usePathname();
   const { data: session, status } = useSession();
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (query.trim().length >= 2) {
+        setLoadingSuggestions(true);
+        try {
+          const res = await fetch(`/api/comic/search/${encodeURIComponent(query.trim())}`);
+          const data = await res.json();
+          if (data.success && data.data) {
+            setSuggestions(data.data.slice(0, 5));
+            setShowSuggestions(true);
+          } else {
+            setSuggestions([]);
+          }
+        } catch (error) {
+          console.error('Failed to fetch suggestions', error);
+        } finally {
+          setLoadingSuggestions(false);
+        }
+      } else {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [query]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,6 +51,7 @@ export default function Navbar() {
       router.push(`/search?q=${encodeURIComponent(query.trim())}`);
       setQuery('');
       setSearchOpen(false);
+      setShowSuggestions(false);
     }
   };
 
@@ -50,16 +82,46 @@ export default function Navbar() {
           
           <div className="nav-right">
             {/* Desktop search */}
-            <form onSubmit={handleSearch} className="search-form search-form-desktop flex-center">
-              <Search size={16} className="search-icon" />
-              <input 
-                type="text" 
-                placeholder="Cari manga..." 
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="search-input"
-              />
-            </form>
+            <div style={{ position: 'relative' }}>
+              <form onSubmit={handleSearch} className="search-form search-form-desktop flex-center">
+                <Search size={16} className="search-icon" />
+                <input 
+                  type="text" 
+                  placeholder="Cari manga..." 
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onFocus={() => { if (suggestions.length > 0 || query.trim().length >= 2) setShowSuggestions(true); }}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                  className="search-input"
+                />
+                {loadingSuggestions && <Loader2 size={16} className="search-icon" style={{ animation: 'spin 1s linear infinite', marginLeft: 'auto' }} />}
+              </form>
+              
+              {showSuggestions && (suggestions.length > 0 || loadingSuggestions) && (
+                <div className="search-suggestions glass-panel search-form-desktop" style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '0.5rem', borderRadius: '12px', overflow: 'hidden', zIndex: 100, display: 'flex', flexDirection: 'column' }}>
+                  {suggestions.map((item, idx) => (
+                    <Link 
+                      key={idx} 
+                      href={`/comic/${item.endpoint}`} 
+                      className="suggestion-item"
+                      style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: idx === suggestions.length - 1 ? 'none' : '1px solid var(--glass-border)', textDecoration: 'none', color: 'var(--text-primary)', transition: 'background 0.2s' }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-color-lighter)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      onClick={() => { setQuery(''); setShowSuggestions(false); setSearchOpen(false); }}
+                    >
+                      <img src={item.image} alt={item.title} style={{ width: '32px', height: '42px', objectFit: 'cover', borderRadius: '4px' }} />
+                      <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{item.type || 'Manga'}</span>
+                      </div>
+                    </Link>
+                  ))}
+                  {suggestions.length === 0 && !loadingSuggestions && query.trim().length >= 2 && (
+                    <div style={{ padding: '1rem', textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Tidak ditemukan</div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Mobile search toggle */}
             <button 
@@ -93,18 +155,46 @@ export default function Navbar() {
         </div>
 
         {/* Mobile Search Dropdown */}
-        <div className={`mobile-search-dropdown ${searchOpen ? 'open' : ''}`}>
-          <form onSubmit={handleSearch} className="mobile-search-form flex-center">
-            <Search size={18} className="search-icon" />
-            <input 
-              type="text" 
-              placeholder="Cari manga, manhwa, manhua..." 
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="search-input"
-              autoFocus={searchOpen}
-            />
-          </form>
+        <div className={`mobile-search-dropdown ${searchOpen ? 'open' : ''}`} style={{ overflow: showSuggestions ? 'visible' : 'hidden' }}>
+          <div style={{ position: 'relative' }}>
+            <form onSubmit={handleSearch} className="mobile-search-form flex-center">
+              <Search size={18} className="search-icon" />
+              <input 
+                type="text" 
+                placeholder="Cari manga, manhwa, manhua..." 
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => { if (suggestions.length > 0 || query.trim().length >= 2) setShowSuggestions(true); }}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                className="search-input"
+                autoFocus={searchOpen}
+              />
+              {loadingSuggestions && <Loader2 size={16} className="search-icon" style={{ animation: 'spin 1s linear infinite', marginLeft: 'auto' }} />}
+            </form>
+
+            {showSuggestions && searchOpen && (suggestions.length > 0 || loadingSuggestions) && (
+                <div className="search-suggestions glass-panel" style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '0.5rem', borderRadius: '12px', overflow: 'hidden', zIndex: 100, display: 'flex', flexDirection: 'column' }}>
+                  {suggestions.map((item, idx) => (
+                    <Link 
+                      key={idx} 
+                      href={`/comic/${item.endpoint}`} 
+                      className="suggestion-item"
+                      style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: idx === suggestions.length - 1 ? 'none' : '1px solid var(--glass-border)', textDecoration: 'none', color: 'var(--text-primary)', transition: 'background 0.2s' }}
+                      onClick={() => { setQuery(''); setShowSuggestions(false); setSearchOpen(false); }}
+                    >
+                      <img src={item.image} alt={item.title} style={{ width: '32px', height: '42px', objectFit: 'cover', borderRadius: '4px' }} />
+                      <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{item.type || 'Manga'}</span>
+                      </div>
+                    </Link>
+                  ))}
+                  {suggestions.length === 0 && !loadingSuggestions && query.trim().length >= 2 && (
+                    <div style={{ padding: '1rem', textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Tidak ditemukan</div>
+                  )}
+                </div>
+            )}
+          </div>
         </div>
       </nav>
 

@@ -7,6 +7,7 @@ import Loader from '@/components/Loader';
 import { ArrowLeft, ArrowRight, ScrollText, Image as ImageIcon } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import CommentSection from '@/components/CommentSection';
+import ReactionSection from '@/components/ReactionSection';
 
 interface ChapterData {
   title: string;
@@ -128,6 +129,9 @@ export default function ChapterReaderPage({ params }: { params: Promise<{ endpoi
           </div>
         )}
       </div>
+
+      {/* Reaction Section */}
+      <ReactionSection endpoint={fullEndpoint} />
       
       <div className="reader-footer glass-panel">
         <p>Akhir dari {chapter.title}</p>

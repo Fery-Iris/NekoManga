@@ -8,6 +8,7 @@ import Loader from '@/components/Loader';
 import { Star, BookOpen, Clock, User, Bookmark, Play, History } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import CommentSection from '@/components/CommentSection';
+import ReactionSection from '@/components/ReactionSection';
 import ScrollReveal from '@/components/ScrollReveal';
 
 interface Chapter {
@@ -274,6 +275,7 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
         </div>
 
         <div style={{ marginTop: '4rem' }}>
+          <ReactionSection endpoint={fullEndpoint} />
           <CommentSection endpoint={fullEndpoint} />
         </div>
       </div>

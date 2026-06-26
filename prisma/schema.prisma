@@ -102,3 +102,14 @@ model VerificationToken {
 
   @@unique([identifier, token])
 }
+
+model ChapterReaction {
+  id              String   @id @default(uuid())
+  chapterEndpoint String   @unique
+  keren           Int      @default(0)
+  lucu            Int      @default(0)
+  suka            Int      @default(0)
+  terkejut        Int      @default(0)
+  marah           Int      @default(0)
+  sedih           Int      @default(0)
+}

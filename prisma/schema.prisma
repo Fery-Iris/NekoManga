@@ -1,6 +1,5 @@
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -9,80 +8,31 @@ datasource db {
 
 model User {
   id            String    @id @default(uuid())
-  email         String    @unique
-  emailVerified DateTime?
+  email         String?   @unique
   name          String?
-  password      String?
-  avatar        String?
+  emailVerified DateTime?
   image         String?
-  role          String    @default("USER") // USER, ADMIN
-  createdAt     DateTime  @default(now())
-  
-  bookmarks     Bookmark[]
-  histories     History[]
-  comments      Comment[]
+  password      String?
   accounts      Account[]
   sessions      Session[]
+  bookmarks     Bookmark[]
+  histories     History[]
 }
 
-model Bookmark {
-  id             String   @id @default(uuid())
-  userId         String
-  comicEndpoint  String
-  comicName      String
-  comicThumbnail String?
-  comicType      String?
-  createdAt      DateTime @default(now())
-
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, comicEndpoint]) // 1 user hanya bisa bookmark 1 komik sekali
-}
-
-model History {
-  id              String   @id @default(uuid())
-  userId          String
-  comicEndpoint   String
-  chapterName     String
-  chapterEndpoint String
-  updatedAt       DateTime @updatedAt
-
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, comicEndpoint]) // Menyimpan history terakhir per komik
-}
-
-model Comment {
-  id            String    @id @default(uuid())
-  userId        String
-  comicEndpoint String
-  text          String
-  createdAt     DateTime  @default(now())
-  
-  // Untuk nested replies
-  parentId      String?
-  parent        Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
-  replies       Comment[] @relation("CommentReplies")
-
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-// NextAuth standard models
 model Account {
-  id                 String  @id @default(cuid())
-  userId             String
-  type               String
-  provider           String
-  providerAccountId  String
-  refresh_token      String?  @db.Text
-  access_token       String?  @db.Text
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String?  @db.Text
-  session_state      String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -103,13 +53,30 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-model ChapterReaction {
+model Bookmark {
+  id             String   @id @default(uuid())
+  userId         String
+  comicEndpoint  String
+  comicName      String
+  comicThumbnail String?
+  comicType      String?
+  createdAt      DateTime @default(now())
+  
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, comicEndpoint])
+}
+
+model History {
   id              String   @id @default(uuid())
-  chapterEndpoint String   @unique
-  keren           Int      @default(0)
-  lucu            Int      @default(0)
-  suka            Int      @default(0)
-  terkejut        Int      @default(0)
-  marah           Int      @default(0)
-  sedih           Int      @default(0)
+  userId          String
+  comicEndpoint   String
+  chapterName     String
+  chapterEndpoint String
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, comicEndpoint])
 }

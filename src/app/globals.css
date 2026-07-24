@@ -551,7 +551,13 @@ input {
 @media (max-width: 768px) {
   /* -- Theme drawer -- */
   .theme-drawer {
-    width: 280px;
+    width: 290px;
+  }
+  .theme-drawer-body {
+    padding: 1rem 1.2rem;
+  }
+  .theme-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   /* -- Top navbar adjustments -- */

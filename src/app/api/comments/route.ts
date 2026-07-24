@@ -20,11 +20,11 @@ export async function GET(request: NextRequest) {
       },
       include: {
         user: {
-          select: { name: true, avatar: true, image: true }
+          select: { name: true, image: true }
         },
         replies: {
           include: {
-            user: { select: { name: true, avatar: true, image: true } }
+            user: { select: { name: true, image: true } }
           },
           orderBy: { createdAt: 'asc' }
         }
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
         parentId: parentId || null
       },
       include: {
-        user: { select: { name: true, avatar: true, image: true } }
+        user: { select: { name: true, image: true } }
       }
     });
 

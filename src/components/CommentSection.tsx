@@ -92,7 +92,7 @@ export default function CommentSection({ endpoint }: { endpoint: string }) {
   };
 
   const renderComment = (comment: Comment, isReply = false) => {
-    const avatar = comment.user.avatar || comment.user.image || '/icon.png';
+    const avatar = comment.user.image || '/icon.png';
     const name = comment.user.name || 'Anonymous';
     const date = new Date(comment.createdAt).toLocaleDateString('id-ID', { year: 'numeric', month: 'short', day: 'numeric' });
     

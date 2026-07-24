@@ -17,6 +17,7 @@ model User {
   sessions      Session[]
   bookmarks     Bookmark[]
   histories     History[]
+  comments      Comment[]
 }
 
 model Account {
@@ -79,4 +80,30 @@ model History {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, comicEndpoint])
+}
+
+model Comment {
+  id            String    @id @default(uuid())
+  comicEndpoint String
+  text          String
+  userId        String
+  parentId      String?
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent        Comment?  @relation("CommentToComment", fields: [parentId], references: [id], onDelete: Cascade)
+  replies       Comment[] @relation("CommentToComment")
+}
+
+model ChapterReaction {
+  id              String   @id @default(uuid())
+  chapterEndpoint String   @unique
+  keren           Int      @default(0)
+  lucu            Int      @default(0)
+  suka            Int      @default(0)
+  terkejut        Int      @default(0)
+  marah           Int      @default(0)
+  sedih           Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }

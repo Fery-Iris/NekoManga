@@ -27,10 +27,10 @@ export default function Navbar() {
           const data = await res.json();
           if (data.success && data.data) {
             setSuggestions(data.data.slice(0, 5));
-            setShowSuggestions(true);
           } else {
             setSuggestions([]);
           }
+          setShowSuggestions(true);
         } catch (error) {
           console.error('Failed to fetch suggestions', error);
         } finally {
@@ -97,7 +97,7 @@ export default function Navbar() {
                 {loadingSuggestions && <Loader2 size={16} className="search-icon" style={{ animation: 'spin 1s linear infinite', marginLeft: 'auto' }} />}
               </form>
               
-              {showSuggestions && (suggestions.length > 0 || loadingSuggestions) && (
+              {showSuggestions && query.trim().length >= 2 && (
                 <div className="search-suggestions glass-panel search-form-desktop" style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '0.5rem', borderRadius: '12px', overflow: 'hidden', zIndex: 100, display: 'flex', flexDirection: 'column' }}>
                   {suggestions.map((item, idx) => (
                     <Link 
@@ -172,7 +172,7 @@ export default function Navbar() {
               {loadingSuggestions && <Loader2 size={16} className="search-icon" style={{ animation: 'spin 1s linear infinite', marginLeft: 'auto' }} />}
             </form>
 
-            {showSuggestions && searchOpen && (suggestions.length > 0 || loadingSuggestions) && (
+            {showSuggestions && searchOpen && query.trim().length >= 2 && (
                 <div className="search-suggestions glass-panel" style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '0.5rem', borderRadius: '12px', overflow: 'hidden', zIndex: 100, display: 'flex', flexDirection: 'column' }}>
                   {suggestions.map((item, idx) => (
                     <Link 

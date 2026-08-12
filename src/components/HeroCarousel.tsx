@@ -65,7 +65,7 @@ export default function HeroCarousel({ comics }: { comics: Comic[] }) {
               <div className="hero-image-wrapper">
                  <Link href={`/comic/${encodeURIComponent(itemEp)}`} style={{ display: 'block', width: '100%', height: '100%' }}>
                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                   <img src={comic.image} alt={comic.title} className="hero-main-img" />
+                   <img src={`/api/proxy?url=${encodeURIComponent(comic.image)}`} alt={comic.title} className="hero-main-img" />
                  </Link>
               </div>
             </div>

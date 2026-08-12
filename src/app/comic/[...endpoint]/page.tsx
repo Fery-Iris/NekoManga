@@ -39,6 +39,9 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
   // LocalStorage and DB States
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [recentChapter, setRecentChapter] = useState<{name: string, endpoint: string} | null>(null);
+  const [currentChapterPage, setCurrentChapterPage] = useState(1);
+  const chaptersPerPage = 30;
+  
   const { data: session } = useSession();
 
   useEffect(() => {
@@ -178,7 +181,7 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
           <div className="comic-hero-content">
             <div className="comic-cover-large">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={comic.thumbnail} alt={comic.title} />
+              <img src={`/api/proxy?url=${encodeURIComponent(comic.thumbnail)}`} alt={comic.title} />
             </div>
 
             <div className="comic-info-main">
@@ -247,7 +250,7 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
           </div>
 
           <div className="chapters-list-epic">
-            {comic.chapter_list?.map((chapter: Chapter, idx: number) => {
+            {comic.chapter_list?.slice((currentChapterPage - 1) * chaptersPerPage, currentChapterPage * chaptersPerPage).map((chapter: Chapter, idx: number) => {
                const cleanEp = chapter.endpoint.startsWith('/') ? chapter.endpoint.slice(1) : chapter.endpoint;
                const isRead = recentChapter?.endpoint === chapter.endpoint;
                
@@ -272,6 +275,95 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
                );
             })}
           </div>
+
+          {Math.ceil(totalChapters / chaptersPerPage) > 1 && (
+            <div className="pagination-wrapper" style={{ display: 'flex', justifyContent: 'center', marginTop: '3rem', width: '100%' }}>
+              <div className="glass-panel" style={{ 
+                display: 'inline-flex', 
+                alignItems: 'center', 
+                gap: '0.25rem', 
+                padding: '0.35rem', 
+                borderRadius: '16px',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
+              }}>
+                <button 
+                  className="action-btn" 
+                  disabled={currentChapterPage === 1}
+                  onClick={() => setCurrentChapterPage(p => Math.max(1, p - 1))}
+                  style={{ 
+                    minWidth: '80px', 
+                    padding: '0.6rem 1.2rem', 
+                    background: currentChapterPage === 1 ? 'transparent' : 'rgba(255,255,255,0.05)',
+                    color: currentChapterPage === 1 ? 'rgba(255,255,255,0.2)' : 'var(--text-primary)',
+                    borderRadius: '12px',
+                    fontWeight: 600,
+                    border: 'none',
+                    cursor: currentChapterPage === 1 ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => { if (currentChapterPage !== 1) e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
+                  onMouseLeave={(e) => { if (currentChapterPage !== 1) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                >
+                  Prev
+                </button>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0 1rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  <span>Hal</span>
+                  <input 
+                    type="number"
+                    min={1}
+                    max={Math.ceil(totalChapters / chaptersPerPage)}
+                    value={currentChapterPage}
+                    onChange={(e) => {
+                      let val = parseInt(e.target.value);
+                      if (isNaN(val)) return;
+                      const maxPage = Math.ceil(totalChapters / chaptersPerPage);
+                      if (val < 1) val = 1;
+                      if (val > maxPage) val = maxPage;
+                      setCurrentChapterPage(val);
+                    }}
+                    style={{ 
+                      padding: '0.5rem', 
+                      borderRadius: '10px', 
+                      background: 'rgba(0,0,0,0.3)', 
+                      color: 'var(--primary-accent)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      outline: 'none',
+                      width: '60px',
+                      fontWeight: 'bold',
+                      textAlign: 'center',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary-accent)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; }}
+                  />
+                  <span>/ {Math.ceil(totalChapters / chaptersPerPage)}</span>
+                </div>
+
+                <button 
+                  className="action-btn" 
+                  disabled={currentChapterPage === Math.ceil(totalChapters / chaptersPerPage)}
+                  onClick={() => setCurrentChapterPage(p => Math.min(Math.ceil(totalChapters / chaptersPerPage), p + 1))}
+                  style={{ 
+                    minWidth: '80px', 
+                    padding: '0.6rem 1.2rem', 
+                    background: currentChapterPage === Math.ceil(totalChapters / chaptersPerPage) ? 'transparent' : 'var(--primary-accent)',
+                    color: currentChapterPage === Math.ceil(totalChapters / chaptersPerPage) ? 'rgba(255,255,255,0.2)' : 'white',
+                    borderRadius: '12px',
+                    fontWeight: 600,
+                    border: 'none',
+                    cursor: currentChapterPage === Math.ceil(totalChapters / chaptersPerPage) ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: currentChapterPage === Math.ceil(totalChapters / chaptersPerPage) ? 'none' : '0 4px 12px rgba(239, 71, 111, 0.3)'
+                  }}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={{ marginTop: '4rem' }}>

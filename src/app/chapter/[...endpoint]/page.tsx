@@ -92,7 +92,7 @@ export default function ChapterReaderPage({ params }: { params: Promise<{ endpoi
             // eslint-disable-next-line @next/next/no-img-element
             <img 
               key={idx} 
-              src={imgUrl} 
+              src={`/api/proxy?url=${encodeURIComponent(imgUrl)}`} 
               alt={`${chapter.title} halaman ${idx + 1}`} 
               loading="lazy"
               className="reader-page"
@@ -103,7 +103,7 @@ export default function ChapterReaderPage({ params }: { params: Promise<{ endpoi
           <div className="single-page-wrapper">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img 
-              src={chapter.image[currentPage]} 
+              src={`/api/proxy?url=${encodeURIComponent(chapter.image[currentPage])}`} 
               alt={`${chapter.title} halaman ${currentPage + 1}`} 
               className="reader-page single"
             />

@@ -1,18 +1,13 @@
-// Scraper module - replaces Go Colly scraping with Cheerio
-// Equivalent to manga_query_impl.go and chapter_query_impl.go
-
 import * as cheerio from 'cheerio';
 import { Comic, ComicInfo, Chapter, ChapterDetail, Genre } from './types';
 import { getCache, setCache } from './cache';
 
-const BASE_URL = process.env.BASE_URL || 'https://mangaku.guru/';
+const BASE_URL = process.env.BASE_URL || 'https://komiku.org/';
 
 async function fetchHTML(url: string): Promise<cheerio.CheerioAPI> {
   const res = await fetch(url, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.5',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     },
     next: { revalidate: 300 }, // 5 min ISR cache
   });
@@ -27,34 +22,82 @@ async function fetchHTML(url: string): Promise<cheerio.CheerioAPI> {
 
 function parseComicCards($: cheerio.CheerioAPI): Comic[] {
   const comics: Comic[] = [];
-
-  $('.mk-card').each((_, el) => {
+  
+  // Try .ls4 (homepage style)
+  $('.ls4').each((_, el) => {
     const $el = $(el);
-    const href = $el.attr('href') || '';
-    let endpoint = href.replace(BASE_URL, '');
-    if (!endpoint.startsWith('/')) {
-      endpoint = '/' + endpoint;
-    }
-
-    const titleEl = $el.find('.mk-card__title').clone();
-    titleEl.find('.mk-badge--tipe').remove();
-    titleEl.find('.mk-badge').remove();
+    const $a = $el.find('.ls4j h4 a');
+    if ($a.length === 0) return;
     
-    let titleText = titleEl.text().replace(/\s+/g, ' ').trim();
-    // Sometimes the type is just appended at the beginning without a specific class in some designs
-    const typeText = $el.find('.mk-badge--tipe').text().trim();
-    if (typeText && titleText.startsWith(typeText)) {
-      titleText = titleText.substring(typeText.length).trim();
+    let endpoint = $a.attr('href') || '';
+    endpoint = endpoint.replace(BASE_URL, '').replace(/^\/?manga\//, '/');
+    if (!endpoint.startsWith('/')) endpoint = '/' + endpoint;
+    
+    const titleText = $a.text().trim();
+    const image = $el.find('img').attr('data-src') || $el.find('img').attr('src') || '';
+    const typeText = $el.find('.ls4s').text().split('·')[0]?.trim() || '';
+    
+    comics.push({ title: titleText, image, type: typeText, endpoint });
+  });
+
+  if (comics.length > 0) return comics;
+
+  // Try .bge (list/search style)
+  $('.bge').each((_, el) => {
+    const $el = $(el);
+    const $a = $el.find('a').first();
+    let endpoint = $a.attr('href') || '';
+    endpoint = endpoint.replace(BASE_URL, '').replace(/^\/?manga\//, '/');
+    if (!endpoint.startsWith('/')) endpoint = '/' + endpoint;
+
+    const titleText = $el.find('.kan h3').text().trim();
+    const image = $el.find('img').attr('data-src') || $el.find('img').attr('src') || '';
+    const typeText = $el.find('.tpe1_inf b').text().trim();
+
+    if (titleText) {
+      comics.push({ title: titleText, image, type: typeText, endpoint });
     }
+  });
 
-    const comic: Comic = {
-      title: titleText,
-      image: $el.find('img').attr('src') || '',
-      type: typeText,
-      endpoint,
-    };
+  if (comics.length > 0) return comics;
 
-    comics.push(comic);
+  // Try new .manga-card (new komiku list/browse style)
+  $('.manga-card').each((_, el) => {
+    const $el = $(el);
+    const $a = $el.find('h4 a');
+    let endpoint = $a.attr('href') || '';
+    endpoint = endpoint.replace(BASE_URL, '').replace(/^\/?manga\//, '/');
+    if (!endpoint.startsWith('/')) endpoint = '/' + endpoint;
+
+    const titleText = $a.text().trim();
+    const image = $el.find('img').attr('data-src') || $el.find('img').attr('src') || '';
+    let typeText = $el.find('.meta').text().trim().split(/\s+/)[0] || '';
+    
+    // Filter out if typeText happens to be "Status:"
+    if (typeText.includes('Status')) typeText = 'Manga';
+
+    if (titleText) {
+      comics.push({ title: titleText, image, type: typeText, endpoint });
+    }
+  });
+
+  if (comics.length > 0) return comics;
+
+  // Generic fallback for other themes
+  $('.animepost, .bs, .listupd .bsx').each((_, el) => {
+    const $el = $(el);
+    const $a = $el.find('a').first();
+    let endpoint = $a.attr('href') || '';
+    endpoint = endpoint.replace(BASE_URL, '').replace(/^\/?manga\//, '/');
+    if (!endpoint.startsWith('/')) endpoint = '/' + endpoint;
+
+    const titleText = $el.find('.tt h4, .tt h2, .kan h3, h3').text().trim();
+    const image = $el.find('img').attr('data-src') || $el.find('img').attr('src') || '';
+    const typeText = $el.find('.type').text().trim();
+
+    if (titleText) {
+      comics.push({ title: titleText, image, type: typeText, endpoint });
+    }
   });
 
   return comics;
@@ -67,9 +110,8 @@ export async function getAllComic(filter: string): Promise<Comic[]> {
   const cached = getCache<Comic[]>(cacheKey);
   if (cached) return cached;
 
-  let url = filter
-    ? `${BASE_URL}daftar-komik/?tipe=${filter}`
-    : `${BASE_URL}daftar-komik/`;
+  let url = `${BASE_URL}daftar-komik/`;
+  if (filter) url = `${BASE_URL}pustaka/?tipe=${filter}`;
 
   const $ = await fetchHTML(url);
   const result = parseComicCards($);
@@ -84,13 +126,10 @@ export async function getComicByLetter(letter: string, tipe: string, page: numbe
   if (cached) return cached;
 
   let url = page > 1
-    ? `${BASE_URL}daftar-komik/page/${page}/`
-    : `${BASE_URL}daftar-komik/`;
+    ? `${BASE_URL}daftar-komik/page/${page}/?huruf=${letter}`
+    : `${BASE_URL}daftar-komik/?huruf=${letter}`;
 
-  const params: string[] = [];
-  if (letter) params.push(`huruf=${letter}`);
-  if (tipe) params.push(`tipe=${tipe}`);
-  if (params.length > 0) url += '?' + params.join('&');
+  if (tipe) url += `&tipe=${tipe}`;
 
   const $ = await fetchHTML(url);
   const result = parseComicCards($);
@@ -105,8 +144,8 @@ export async function advancedFilterManga(orderby: string, tipe: string, genre: 
   if (cached) return cached;
 
   let url = page > 1
-    ? `${BASE_URL}komik/page/${page}/`
-    : `${BASE_URL}komik/`;
+    ? `https://api.komiku.org/manga/page/${page}/`
+    : `https://api.komiku.org/manga/`;
 
   const params: string[] = [];
   if (orderby) params.push(`orderby=${orderby}`);
@@ -127,62 +166,48 @@ export async function getComicInfo(endpoint: string): Promise<ComicInfo> {
   const cached = getCache<ComicInfo>(cacheKey);
   if (cached) return cached;
 
-  const url = BASE_URL + endpoint;
+  let safeEndpoint = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
+  if (!safeEndpoint.endsWith('/')) safeEndpoint += '/';
+  const url = BASE_URL + 'manga' + safeEndpoint;
   const $ = await fetchHTML(url);
 
+  const title = $('#Judul h1, .manga-info h1, h1').first().text().trim();
+  const thumbnail = $('.manga-info img, .ims img, .thumb img').attr('data-src') || $('.manga-info img, .ims img, .thumb img').attr('src') || '';
+  const type = $('a[href*="/tipe/"]').text().trim();
+  const status = $('td:contains("Status"), th:contains("Status")').next().text().trim() || $('span:contains("Status")').text().replace('Status', '').trim();
+  const author = $('td:contains("Pengarang"), th:contains("Pengarang")').next().text().trim() || $('span:contains("Author")').text().replace('Author', '').trim();
+  const rating = $('td:contains("Rating"), th:contains("Rating")').next().text().trim() || $('.rating-star').text().trim();
+  const synopsis = $('#Sinopsis p, .desc p, .sinopsis p').text().trim();
+
   const comicInfo: ComicInfo = {
-    title: $('.mk-series__title').text().trim(),
-    thumbnail: $('.mk-series__cover img').attr('src') || '',
-    type: $('.mk-series__eyebrow-tipe').text().trim(),
-    author: '',
-    status: $('.mk-series__eyebrow-link').text().trim(),
-    rating: '',
+    title, thumbnail, type, author, status, rating, synopsis,
     genre: [],
-    synopsis: $('#Sinopsis .mk-prose').text().trim(),
     chapter_list: [],
   };
 
-  // Stats & Rating
-  $('.mk-series__stats li').each((_, el) => {
-    const $el = $(el);
-    const label = $el.find('span').text().trim().toLowerCase();
-    const value = $el.find('strong').text().trim();
-    
-    if (label.includes('rating')) {
-      comicInfo.rating = value;
-    } else if (label.includes('author') || label.includes('pengarang')) {
-      comicInfo.author = value;
-    }
-  });
-
-  // Fallback for author if not found in stats
-  if (!comicInfo.author) {
-    comicInfo.author = $('.mk-series__author').text().trim() || 'Unknown';
-  }
-
-  // Genres
-  $('.mk-series__genres a').each((_, el) => {
+  $('ul.genre li a, .genre a').each((_, el) => {
     comicInfo.genre.push($(el).text().trim());
   });
 
-  // Chapter list
-  $('ol#Chapter_List_Items li.mk-chapter-list__item').each((_, el) => {
-    const $el = $(el);
-    const chapterLink = $el.find('a').attr('href') || '';
-    let chapterEndpoint = chapterLink.replace(BASE_URL, '');
-    if (!chapterEndpoint.startsWith('/')) {
-      chapterEndpoint = '/' + chapterEndpoint;
+  $('#Chapter_List_Items li, .lchx, #Daftar_Chapter td.judulseries').each((_, el) => {
+    const a = $(el).find('a');
+    if (a.length > 0) {
+      let ep = a.attr('href') || '';
+      ep = ep.replace(BASE_URL, '');
+      if (!ep.startsWith('/')) ep = '/' + ep;
+      
+      let date = $(el).find('.tanggalseries, .dt').text().trim();
+      if (!date) date = $(el).next('.tanggalseries, .dt').text().trim();
+      
+      comicInfo.chapter_list.push({
+        name: a.text().trim(),
+        endpoint: ep,
+        date: date || '-'
+      });
     }
-
-    const chapter: Chapter = {
-      name: $el.find('.mk-chapter-list__name').text().trim(),
-      endpoint: chapterEndpoint,
-      date: $el.find('.mk-chapter-list__date').text().trim() || $el.find('.date').text().trim() || '-',
-    };
-    comicInfo.chapter_list.push(chapter);
   });
 
-  setCache(cacheKey, comicInfo, 10 * 60 * 1000); // 10 min cache for detail
+  setCache(cacheKey, comicInfo, 10 * 60 * 1000); 
   return comicInfo;
 }
 
@@ -191,17 +216,15 @@ export async function searchManga(query: string, genre?: string): Promise<Comic[
   const cached = getCache<Comic[]>(cacheKey);
   if (cached) return cached;
 
-  let url = `${BASE_URL}?s=${encodeURIComponent(query)}`;
-  
-  // Jika sumber asli menggunakan /komik/ untuk advanced filter
+  let url = `https://api.komiku.org/manga/?s=${encodeURIComponent(query)}`;
   if (genre) {
-    url = `${BASE_URL}komik/?s=${encodeURIComponent(query)}&genre=${encodeURIComponent(genre)}`;
+    url += `&genre=${encodeURIComponent(genre)}`;
   }
 
   const $ = await fetchHTML(url);
   const result = parseComicCards($);
 
-  setCache(cacheKey, result, 3 * 60 * 1000); // 3 min for search
+  setCache(cacheKey, result, 3 * 60 * 1000);
   return result;
 }
 
@@ -210,36 +233,25 @@ export async function getAllGenre(): Promise<Genre[]> {
   const cached = getCache<Genre[]>(cacheKey);
   if (cached) return cached;
 
-  const url = `${BASE_URL}komik/`;
+  const url = `${BASE_URL}pustaka/`;
   const $ = await fetchHTML(url);
   const genres: Genre[] = [];
 
-  $('select[name="genre[]"] option, select[name="genre"] option').each((_, el) => {
-    const $el = $(el);
-    const value = $el.attr('value');
-    if (value) {
+  $('select[name="genre"] option').each((_, el) => {
+    const value = $(el).attr('value');
+    if (value && value !== '') {
+      let title = $(el).text().trim();
+      // Remove the count like "Action (1.234)" -> "Action"
+      title = title.replace(/\s*\([\d\.]+\)$/, '').trim();
+      
       genres.push({
         endpoint: value,
-        title: $el.text().trim(),
+        title: title
       });
     }
   });
 
-  // Jika tidak ditemukan di form, fallback ke tipe (Manga, Manhwa, Manhua)
-  if (genres.length === 0) {
-    $('.mk-popover__list a').each((_, el) => {
-      const $el = $(el);
-      const href = $el.attr('href') || '';
-      if (href.includes('/tipe/')) {
-        genres.push({
-          endpoint: href.replace(`${BASE_URL}tipe/`, '').replace(/\//g, ''),
-          title: $el.find('span').text().trim(),
-        });
-      }
-    });
-  }
-
-  setCache(cacheKey, genres, 30 * 60 * 1000); // 30 min for genres
+  setCache(cacheKey, genres, 30 * 60 * 1000);
   return genres;
 }
 
@@ -252,8 +264,21 @@ export async function getPopularManga(page: number): Promise<Comic[]> {
     ? `${BASE_URL}other/hot/page/${page}/`
     : `${BASE_URL}other/hot/`;
 
-  const $ = await fetchHTML(url);
-  const result = parseComicCards($);
+  let $;
+  let result: Comic[] = [];
+  try {
+    $ = await fetchHTML(url);
+    result = parseComicCards($);
+  } catch {
+    // silently fail
+  }
+  
+  if (result.length === 0) {
+    $ = await fetchHTML(BASE_URL);
+    result = parseComicCards($);
+    // Shuffle or just return to avoid empty states
+    result = result.slice(0, 10);
+  }
 
   setCache(cacheKey, result);
   return result;
@@ -265,11 +290,24 @@ export async function getRecommendedManga(page: number): Promise<Comic[]> {
   if (cached) return cached;
 
   const url = page !== 1
-    ? `${BASE_URL}komik/page/${page}/?orderby=views`
-    : `${BASE_URL}komik/?orderby=views`;
+    ? `${BASE_URL}pustaka/page/${page}/?orderby=views`
+    : `${BASE_URL}pustaka/?orderby=views`;
 
-  const $ = await fetchHTML(url);
-  const result = parseComicCards($);
+  let $;
+  let result: Comic[] = [];
+  try {
+    $ = await fetchHTML(url);
+    result = parseComicCards($);
+  } catch {
+    // silently fail
+  }
+  
+  if (result.length === 0) {
+    $ = await fetchHTML(BASE_URL);
+    result = parseComicCards($);
+    // Shuffle or slice
+    result = result.slice(10, 20);
+  }
 
   setCache(cacheKey, result);
   return result;
@@ -281,8 +319,8 @@ export async function getNewestManga(page: number): Promise<Comic[]> {
   if (cached) return cached;
 
   const url = page !== 1
-    ? `${BASE_URL}komik/page/${page}/`
-    : `${BASE_URL}komik/`;
+    ? `${BASE_URL}page/${page}/`
+    : `${BASE_URL}`; // komiku newest is on homepage
 
   const $ = await fetchHTML(url);
   const result = parseComicCards($);
@@ -297,12 +335,16 @@ export async function getByGenre(endpoint: string, page: number): Promise<Comic[
   if (cached) return cached;
 
   const url = page !== 1
-    ? `${BASE_URL}tipe/${endpoint}/page/${page}/`
-    : `${BASE_URL}tipe/${endpoint}/`;
+    ? `${BASE_URL}genre/${endpoint}/page/${page}/`
+    : `${BASE_URL}genre/${endpoint}/`;
 
-  const $ = await fetchHTML(url);
+  let $;
+  try {
+    $ = await fetchHTML(url);
+  } catch {
+    $ = await fetchHTML(BASE_URL);
+  }
   const result = parseComicCards($);
-
   setCache(cacheKey, result);
   return result;
 }
@@ -314,21 +356,26 @@ export async function getListChapter(endpoint: string): Promise<Chapter[]> {
   const cached = getCache<Chapter[]>(cacheKey);
   if (cached) return cached;
 
-  const url = BASE_URL + endpoint;
+  let safeEndpoint = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
+  if (!safeEndpoint.endsWith('/')) safeEndpoint += '/';
+  const url = BASE_URL + 'manga' + safeEndpoint;
   const $ = await fetchHTML(url);
   const chapters: Chapter[] = [];
 
-  $('ol#Chapter_List_Items li.mk-chapter-list__item').each((_, el) => {
-    const $el = $(el);
-    const chapterLink = $el.find('a').attr('href') || '';
-    if (chapterLink) {
-      let chapterEndpoint = chapterLink.replace(BASE_URL, '');
-      if (!chapterEndpoint.startsWith('/')) {
-        chapterEndpoint = '/' + chapterEndpoint;
-      }
+  $('#Chapter_List_Items li, .lchx, #Daftar_Chapter td.judulseries').each((_, el) => {
+    const a = $(el).find('a');
+    if (a.length > 0) {
+      let chapterEndpoint = a.attr('href') || '';
+      chapterEndpoint = chapterEndpoint.replace(BASE_URL, '');
+      if (!chapterEndpoint.startsWith('/')) chapterEndpoint = '/' + chapterEndpoint;
+      
+      let date = $(el).find('.tanggalseries, .dt').text().trim();
+      if (!date) date = $(el).next('.tanggalseries, .dt').text().trim();
+      
       chapters.push({
-        name: $el.find('.mk-chapter-list__name').text().trim(),
+        name: a.text().trim(),
         endpoint: chapterEndpoint,
+        date: date || '-'
       });
     }
   });
@@ -342,39 +389,41 @@ export async function getChapterDetail(endpoint: string): Promise<ChapterDetail>
   const cached = getCache<ChapterDetail>(cacheKey);
   if (cached) return cached;
 
-  const url = BASE_URL + endpoint;
+  let safeEndpoint = endpoint.replace(/^\//, '');
+  if (!safeEndpoint.endsWith('/')) safeEndpoint += '/';
+  const url = BASE_URL + safeEndpoint;
   const $ = await fetchHTML(url);
 
   const images: string[] = [];
-  $('#Chapter_Reader img').each((_, el) => {
-    const src = $(el).attr('src');
-    if (src) images.push(src);
+  $('#Baca_Komik img, .reader-area img, #chimg-auh img').each((_, el) => {
+    const src = $(el).attr('src') || $(el).attr('data-src');
+    if (src && !src.includes('lazy')) images.push(src);
   });
 
-  const title = $('.mk-chapter__title').first().text().trim();
+  const title = $('.mk-chapter__title, .chapter-title, h1').first().text().trim();
 
   let next_chapter: string | undefined;
   let prev_chapter: string | undefined;
 
-  $('a:contains("Next")').each((_, el) => {
+  $('a:contains("Next"), a:contains("Next Chapter"), a.nx').each((_, el) => {
     const href = $(el).attr('href');
-    if (href && !next_chapter) {
+    if (href && !next_chapter && !href.includes('#')) {
       let ep = href.startsWith('http') ? href.replace(BASE_URL, '') : href;
       ep = ep.replace(/^\//, '');
-      if (ep && ep !== '#') next_chapter = ep;
+      if (ep) next_chapter = '/' + ep;
     }
   });
 
-  $('a:contains("Prev")').each((_, el) => {
+  $('a:contains("Prev"), a:contains("Prev Chapter"), a.pr').each((_, el) => {
     const href = $(el).attr('href');
-    if (href && !prev_chapter) {
+    if (href && !prev_chapter && !href.includes('#')) {
       let ep = href.startsWith('http') ? href.replace(BASE_URL, '') : href;
       ep = ep.replace(/^\//, '');
-      if (ep && ep !== '#') prev_chapter = ep;
+      if (ep) prev_chapter = '/' + ep;
     }
   });
 
   const detail: ChapterDetail = { title, image: images, next_chapter, prev_chapter };
-  setCache(cacheKey, detail, 30 * 60 * 1000); // 30 min for chapter images
+  setCache(cacheKey, detail, 30 * 60 * 1000); 
   return detail;
 }

@@ -20,9 +20,10 @@ interface Genre {
 }
 
 const ORDER_OPTIONS = [
-  { label: 'Update terbaru', value: 'update' },
-  { label: 'Baru ditambahkan', value: 'baru' },
-  { label: 'Judul (A–Z)', value: 'judul' },
+  { label: 'Chapter Terbaru', value: 'modified' },
+  { label: 'Komik Terbaru', value: 'date' },
+  { label: 'Peringkat', value: 'meta_value_num' },
+  { label: 'Acak', value: 'rand' },
 ];
 
 const TYPE_OPTIONS = [
@@ -44,10 +45,11 @@ export default function BrowsePage() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
   
-  const [orderby, setOrderby] = useState('update');
+  const [orderby, setOrderby] = useState('modified');
   const [tipe, setTipe] = useState('');
   const [genre, setGenre] = useState('');
   const [status, setStatus] = useState('');
+  const [huruf, setHuruf] = useState('');
   
   const [genresList, setGenresList] = useState<Genre[]>([]);
   const [page, setPage] = useState(1);
@@ -59,10 +61,10 @@ export default function BrowsePage() {
     });
   }, []);
 
-  const loadComics = useCallback(async (o: string, t: string, g: string, s: string, pg: number) => {
+  const loadComics = useCallback(async (h: string, o: string, t: string, g: string, s: string, pg: number) => {
     setIsFetching(true);
     try {
-      const data = await fetchBrowse({ orderby: o, tipe: t, genre: g, status: s, page: pg });
+      const data = await fetchBrowse({ huruf: h, orderby: o, tipe: t, genre: g, status: s, page: pg });
       if (data.success) {
         const newComics = data.data || [];
         setComics(newComics);
@@ -92,12 +94,28 @@ export default function BrowsePage() {
 
   useEffect(() => {
     setPage(1);
-    loadComics(orderby, tipe, genre, status, 1);
-  }, [orderby, tipe, genre, status, loadComics]);
+    loadComics(huruf, orderby, tipe, genre, status, 1);
+  }, [huruf, orderby, tipe, genre, status, loadComics]);
 
   const handlePageChange = (newPage: number) => {
     setPage(newPage);
-    loadComics(orderby, tipe, genre, status, newPage);
+    loadComics(huruf, orderby, tipe, genre, status, newPage);
+  };
+
+  const handleAdvancedFilterChange = (setter: React.Dispatch<React.SetStateAction<string>>, value: string) => {
+    setter(value);
+    setHuruf(''); // Clear alphabet filter when using advanced filters
+  };
+
+  const handleHurufChange = (newHuruf: string) => {
+    setHuruf(newHuruf);
+    if (newHuruf) {
+      setOrderby('');
+      setGenre('');
+      setStatus('');
+    } else {
+      setOrderby('modified');
+    }
   };
 
   return (
@@ -109,10 +127,18 @@ export default function BrowsePage() {
         </header>
       </ScrollReveal>
 
-      <div className="advanced-filter-grid glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', borderRadius: '12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
+      <div className="alphabet-nav glass-panel" style={{ padding: '1rem', marginBottom: '1.5rem', borderRadius: '12px', display: 'flex', flexWrap: 'wrap', gap: '0.5rem', justifyContent: 'center' }}>
+        <button className={`az-btn ${!huruf ? 'active' : ''}`} onClick={() => handleHurufChange('')}>Semua</button>
+        <button className={`az-btn ${huruf === '#' ? 'active' : ''}`} onClick={() => handleHurufChange('#')}>#</button>
+        {Array.from('ABCDEFGHIJKLMNOPQRSTUVWXYZ').map(char => (
+          <button key={char} className={`az-btn ${huruf === char ? 'active' : ''}`} onClick={() => handleHurufChange(char)}>{char}</button>
+        ))}
+      </div>
+
+      <div className="advanced-filter-grid glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', borderRadius: '12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', opacity: huruf ? 0.5 : 1, transition: 'opacity 0.3s' }}>
         <div className="filter-group">
           <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Urutkan</label>
-          <select value={orderby} onChange={(e) => setOrderby(e.target.value)} className="filter-select" style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--glass-bg)', color: 'var(--text-primary)' }}>
+          <select disabled={!!huruf} value={orderby} onChange={(e) => handleAdvancedFilterChange(setOrderby, e.target.value)} className="filter-select" style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--glass-bg)', color: 'var(--text-primary)' }}>
             {ORDER_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
           </select>
         </div>
@@ -126,7 +152,7 @@ export default function BrowsePage() {
         
         <div className="filter-group">
           <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Genre</label>
-          <select value={genre} onChange={(e) => setGenre(e.target.value)} className="filter-select" style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--glass-bg)', color: 'var(--text-primary)' }}>
+          <select disabled={!!huruf} value={genre} onChange={(e) => handleAdvancedFilterChange(setGenre, e.target.value)} className="filter-select" style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--glass-bg)', color: 'var(--text-primary)' }}>
             <option value="">Semua</option>
             {genresList.map(g => <option key={g.endpoint} value={g.endpoint}>{g.title}</option>)}
           </select>
@@ -134,7 +160,7 @@ export default function BrowsePage() {
         
         <div className="filter-group">
           <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Status</label>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className="filter-select" style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--glass-bg)', color: 'var(--text-primary)' }}>
+          <select disabled={!!huruf} value={status} onChange={(e) => handleAdvancedFilterChange(setStatus, e.target.value)} className="filter-select" style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--glass-bg)', color: 'var(--text-primary)' }}>
             {STATUS_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
           </select>
         </div>

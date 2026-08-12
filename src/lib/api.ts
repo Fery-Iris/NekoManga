@@ -42,8 +42,9 @@ export const fetchChapterDetail = async (endpoint: string) => {
   return res.json();
 };
 
-export const fetchBrowse = async (paramsObj: { orderby?: string, tipe?: string, genre?: string, status?: string, page?: number } = {}) => {
+export const fetchBrowse = async (paramsObj: { huruf?: string, orderby?: string, tipe?: string, genre?: string, status?: string, page?: number } = {}) => {
   const params = new URLSearchParams();
+  if (paramsObj.huruf) params.append('huruf', paramsObj.huruf);
   if (paramsObj.orderby) params.append('orderby', paramsObj.orderby);
   if (paramsObj.tipe) params.append('tipe', paramsObj.tipe);
   if (paramsObj.genre) params.append('genre', paramsObj.genre);

@@ -13,8 +13,7 @@ export default function ComicCard({ title, image, endpoint, type }: ComicCardPro
   return (
     <Link href={`/comic/${encodeURIComponent(cleanEndpoint)}`} className="comic-card" id={`comic-${cleanEndpoint}`}>
       <div className="comic-cover-wrapper">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={image} alt={title} className="comic-cover" loading="lazy" />
+        <img src={`/api/proxy?url=${encodeURIComponent(image)}`} alt={title} className="comic-cover" loading="lazy" />
         {type && <div className="comic-type">{type}</div>}
       </div>
       <div className="comic-info">

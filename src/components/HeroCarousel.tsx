@@ -73,7 +73,7 @@ export default function HeroCarousel({ comics }: { comics: Comic[] }) {
         );
       })}
 
-      <div className="hero-nav-buttons container">
+      <div className="hero-nav-buttons">
         <button className="hero-nav-btn prev" onClick={prevSlide}><ChevronLeft size={24} /></button>
         <button className="hero-nav-btn next" onClick={nextSlide}><ChevronRight size={24} /></button>
       </div>

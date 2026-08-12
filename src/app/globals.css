@@ -1044,6 +1044,7 @@ input {
   transform: translateY(-50%);
   display: flex;
   justify-content: space-between;
+  padding: 0 2rem;
   z-index: 4;
   pointer-events: none;
 }

@@ -48,26 +48,46 @@ async function fetchHTML(url: string): Promise<cheerio.CheerioAPI> {
       'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
   };
 
-  // 1. Google Translate Mirror (.translate.goog) - Bypasses Cloudflare datacenter IP blocks completely
+  // 1. Primary: Jina AI Reader Proxy - Bypasses Cloudflare bot protection & datacenter IP blocks completely
   try {
-    const googUrl = toTranslateGoogUrl(url);
-    const res = await fetch(googUrl, {
-      headers: fetchHeaders,
+    const jinaUrl = `https://r.jina.ai/${url}`;
+    const res = await fetch(jinaUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)',
+        'X-Return-Format': 'html',
+      },
       cache: 'no-store',
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(15000),
     });
 
     if (res.ok) {
       const html = await res.text();
-      if (html && html.length > 500 && !html.includes('<title>Translate</title>')) {
+      if (html && html.length > 500 && !html.includes('Attention Required! | Cloudflare')) {
         return cheerio.load(html);
       }
     }
   } catch {
-    // try direct fetch next
+    // try fallbacks
   }
 
-  // 2. Direct fetch with browser headers
+  // 2. Secondary: Optional ScraperAPI (if SCRAPER_API_KEY is configured in env)
+  if (process.env.SCRAPER_API_KEY) {
+    try {
+      const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
+      const res = await fetch(proxyUrl, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(15000),
+      });
+      if (res.ok) {
+        const html = await res.text();
+        if (html && html.length > 500) {
+          return cheerio.load(html);
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Direct fetch with browser headers
   try {
     const res = await fetch(url, {
       headers: {
@@ -80,7 +100,7 @@ async function fetchHTML(url: string): Promise<cheerio.CheerioAPI> {
 
     if (res.ok) {
       const html = await res.text();
-      if (html && html.length > 500) {
+      if (html && html.length > 500 && !html.includes('Attention Required! | Cloudflare')) {
         return cheerio.load(html);
       }
     }
@@ -88,18 +108,18 @@ async function fetchHTML(url: string): Promise<cheerio.CheerioAPI> {
     // direct fetch failed
   }
 
-  // 3. Fallback: Google Translate Web Proxy
+  // 4. Fallback: Google Translate Mirror (.translate.goog)
   try {
-    const proxyUrl = `https://translate.google.com/website?sl=en&tl=id&hl=id&client=webapp&u=${encodeURIComponent(url)}`;
-    const res = await fetch(proxyUrl, {
+    const googUrl = toTranslateGoogUrl(url);
+    const res = await fetch(googUrl, {
       headers: fetchHeaders,
       cache: 'no-store',
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(8000),
     });
 
     if (res.ok) {
       const html = await res.text();
-      if (html && html.length > 500) {
+      if (html && html.length > 500 && !html.includes('<title>Translate</title>') && !html.includes('Attention Required! | Cloudflare')) {
         return cheerio.load(html);
       }
     }
@@ -460,15 +480,48 @@ export async function searchManga(query: string, genre?: string): Promise<Comic[
   if (cached && cached.length > 0) return cached;
 
   let result: Comic[] = [];
+
+  // 1. Multi-page parallel search on Komiku's official HTMX search endpoint
   try {
-    let url = `https://api.komiku.org/manga/?s=${encodeURIComponent(query)}`;
-    if (genre) {
-      url += `&genre=${encodeURIComponent(genre)}`;
+    const maxPages = 4;
+    const pages = Array.from({ length: maxPages }, (_, i) => i + 1);
+    const pageResults = await Promise.all(
+      pages.map(async (page) => {
+        try {
+          const url = page === 1
+            ? `https://api.komiku.org/?post_type=manga&s=${encodeURIComponent(query)}`
+            : `https://api.komiku.org/page/${page}/?post_type=manga&s=${encodeURIComponent(query)}`;
+          const $ = await fetchHTML(url);
+          return parseComicCards($);
+        } catch {
+          return [];
+        }
+      })
+    );
+    const seen = new Set<string>();
+    for (const list of pageResults) {
+      for (const item of list) {
+        if (!seen.has(item.endpoint)) {
+          seen.add(item.endpoint);
+          result.push(item);
+        }
+      }
     }
-    const $ = await fetchHTML(url);
-    result = parseComicCards($);
   } catch {}
 
+  // 2. Direct search endpoint fallback
+  if (result.length === 0) {
+    try {
+      let url = `https://api.komiku.org/manga/?s=${encodeURIComponent(query)}`;
+      if (genre) {
+        url += `&genre=${encodeURIComponent(genre)}`;
+      }
+      const $ = await fetchHTML(url);
+      result = parseComicCards($);
+    } catch {}
+  }
+
+  // 3. Fallback to local filter
   if (result.length === 0) {
     const all = fallbackData as Comic[];
     result = all.filter((c) => c.title.toLowerCase().includes(query.toLowerCase()));

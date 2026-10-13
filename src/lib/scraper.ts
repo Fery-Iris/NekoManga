@@ -488,6 +488,65 @@ function buildThumbnailFromSlug(slug: string, title: string, type: string = 'Kom
   return `https://thumbnail.komiku.org/uploads/manga/${slug}/manga_thumbnail-${prefix}-${titlePart}.jpg`;
 }
 
+export async function fetchRealCover(slug: string): Promise<string> {
+  const safeSlug = slug.replace(/^\/+|\/+$/g, '').replace(/^manga\//, '');
+  const cacheKey = `cover_${safeSlug}`;
+  const cached = getCache<string>(cacheKey);
+  if (cached) return cached;
+
+  // 1. Google Translate mirror (super fast, ~200-400ms)
+  try {
+    const googUrl = `https://komiku-org.translate.goog/manga/${safeSlug}/?_x_tr_sl=en&_x_tr_tl=id&_x_tr_hl=id&_x_tr_pto=wapp`;
+    const res = await fetch(googUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept-Language': 'id-ID,id;q=0.9',
+      },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const $ = cheerio.load(html);
+      let img = $('.ims img, .manga-info img, .thumb img, img.sd').first().attr('data-src') ||
+                $('.ims img, .manga-info img, .thumb img, img.sd').first().attr('src') || '';
+      if (img.includes('translate.goog')) {
+        img = img.replace(/https?:\/\/([a-z0-9-]+)\.translate\.goog/i, (_, host) => `https://${host.replace(/-/g, '.')}`).split('?')[0];
+      }
+      if (img.includes('thumbnail.komiku.to')) {
+        img = img.replace('thumbnail.komiku.to', 'thumbnail.komiku.org');
+      }
+      if (img && !img.includes('lazy.')) {
+        setCache(cacheKey, img, 12 * 60 * 60 * 1000);
+        return img;
+      }
+    }
+  } catch {}
+
+  // 2. Jina AI Reader fallback
+  try {
+    const jinaUrl = `https://r.jina.ai/https://komiku.org/manga/${safeSlug}/`;
+    const res = await fetch(jinaUrl, {
+      headers: { 'X-Return-Format': 'html' },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const $ = cheerio.load(html);
+      let img = $('.ims img, .manga-info img, .thumb img, img.sd').first().attr('data-src') ||
+                $('.ims img, .manga-info img, .thumb img, img.sd').first().attr('src') || '';
+      if (img.includes('thumbnail.komiku.to')) {
+        img = img.replace('thumbnail.komiku.to', 'thumbnail.komiku.org');
+      }
+      if (img && !img.includes('lazy.')) {
+        setCache(cacheKey, img, 12 * 60 * 60 * 1000);
+        return img;
+      }
+    }
+  } catch {}
+
+  return '';
+}
+
 export async function searchManga(query: string, genre?: string): Promise<Comic[]> {
   const cacheKey = `search_${query}_${genre || 'all'}`;
   const cached = getCache<Comic[]>(cacheKey);
@@ -581,6 +640,21 @@ export async function searchManga(query: string, genre?: string): Promise<Comic[
     } catch {
       // try next endpoint
     }
+  }
+
+  // 3. Resolve exact cover images for all search results in parallel
+  if (result.length > 0) {
+    await Promise.all(
+      result.map(async (item) => {
+        const slug = item.endpoint.replace(/\//g, '');
+        // If it was already scraped from search cards, thumbMap already has the exact CDN thumbnail
+        if (thumbMap.has(slug)) return;
+        const realCover = await fetchRealCover(slug);
+        if (realCover) {
+          item.image = realCover;
+        }
+      })
+    );
   }
 
   // 3. Fallback: If WP API failed, use any cards collected from HTML scrape

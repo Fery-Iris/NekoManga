@@ -496,9 +496,11 @@ export async function searchManga(query: string, genre?: string): Promise<Comic[
 
   // 1. PRIMARY: WordPress REST API — returns clean JSON, no proxy needed, most comprehensive
   try {
-    const wpUrl = `https://komiku.org/wp-json/wp/v2/manga?search=${encodeURIComponent(query)}&per_page=20&_fields=id,slug,title,class_list`;
+    // Note: no _fields filter - we need the full class_list which includes tipe-manhwa/manhua etc.
+    const wpUrl = `https://komiku.org/wp-json/wp/v2/manga?search=${encodeURIComponent(query)}&per_page=50`;
     const res = await fetch(wpUrl, {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      cache: 'no-store',
       signal: AbortSignal.timeout(10000),
     });
     if (res.ok) {

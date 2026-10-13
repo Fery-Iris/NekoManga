@@ -1,6 +1,9 @@
 import { searchManga } from '@/lib/scraper';
 import { apiSuccess, apiError } from '@/lib/response';
 
+// Force dynamic rendering — search results must never be cached by Vercel
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ query: string }> }

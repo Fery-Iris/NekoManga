@@ -222,13 +222,12 @@ function parseComicCards($: cheerio.CheerioAPI): Comic[] {
   // 4. .manga-card (browse style)
   $('.manga-card').each((_, el) => {
     const $el = $(el);
-    const $a = $el.find('h4 a, a[href*="/manga/"]').first();
-    const title = $a.text().trim();
-    const endpoint = cleanEndpoint($a.attr('href') || '');
+    const title = $el.find('h4 a, h4, h3 a, h3').first().text().trim();
+    const endpoint = cleanEndpoint($el.find('a[href*="/manga/"]').attr('href') || '');
     const image = cleanImage($el.find('img').first());
     let type = $el.find('.meta').text().trim().split(/\s+/)[0] || 'Manga';
     if (type.includes('Status')) type = 'Manga';
-    if (title && image) addComic(title, image, type, endpoint);
+    if (title && image && endpoint) addComic(title, image, type, endpoint);
   });
 
   // 5. Generic article fallback
@@ -254,7 +253,7 @@ export async function getAllComic(filter: string): Promise<Comic[]> {
   let result: Comic[] = [];
   try {
     let url = `${BASE_URL}daftar-komik/`;
-    if (filter) url = `${BASE_URL}pustaka/?tipe=${filter}`;
+    if (filter) url = `${BASE_URL}daftar-komik/?tipe=${filter}`;
     const $ = await fetchHTML(url);
     result = parseComicCards($);
   } catch {}
@@ -317,8 +316,8 @@ export async function advancedFilterManga(orderby: string, tipe: string, genre: 
   let result: Comic[] = [];
   try {
     let url = page > 1
-      ? `https://api.komiku.org/manga/page/${page}/`
-      : `https://api.komiku.org/manga/`;
+      ? `${BASE_URL}daftar-komik/page/${page}/`
+      : `${BASE_URL}daftar-komik/`;
 
     const params: string[] = [];
     if (orderby) params.push(`orderby=${orderby}`);
@@ -564,19 +563,26 @@ export async function getPopularManga(page: number): Promise<Comic[]> {
 
   let result: Comic[] = [];
   try {
-    const url = page !== 1
-      ? `https://api.komiku.org/other/hot/page/${page}/`
-      : `https://api.komiku.org/other/hot/`;
-    const $ = await fetchHTML(url);
-    result = parseComicCards($);
-  } catch {}
-
-  if (result.length === 0) {
-    try {
+    if (page === 1) {
       const $ = await fetchHTML(BASE_URL);
+      $('.ls4').each((_, el) => {
+        const $el = $(el);
+        const titleA = $el.find('h4 a, h3 a').first();
+        const title = titleA.text().trim() || $el.find('h4, h3').text().trim();
+        const link = titleA.attr('href') || $el.find('a[href*="/manga/"]').attr('href');
+        const endpoint = cleanEndpoint(link || '');
+        const image = cleanImage($el.find('img').first());
+        const type = $el.find('.ls4s').text().split('·')[0]?.trim() || 'Manga';
+        if (title && image && endpoint) {
+          result.push({ title, image, type, endpoint });
+        }
+      });
+    } else {
+      const url = `${BASE_URL}daftar-komik/page/${page}/?orderby=meta_value_num`;
+      const $ = await fetchHTML(url);
       result = parseComicCards($).slice(0, 15);
-    } catch {}
-  }
+    }
+  } catch {}
 
   if (result.length === 0) {
     const all = fallbackData as Comic[];
@@ -585,7 +591,7 @@ export async function getPopularManga(page: number): Promise<Comic[]> {
     if (result.length === 0) result = all.slice(0, 15);
   }
 
-  setCache(cacheKey, result);
+  setCache(cacheKey, result, 15 * 60 * 1000);
   return result;
 }
 
@@ -596,11 +602,11 @@ export async function getRecommendedManga(page: number): Promise<Comic[]> {
 
   let result: Comic[] = [];
   try {
-    const url = page !== 1
-      ? `https://api.komiku.org/manga/page/${page}/`
-      : `https://api.komiku.org/manga/`;
+    const url = page > 1
+      ? `${BASE_URL}daftar-komik/page/${page}/?tipe=manhwa`
+      : `${BASE_URL}daftar-komik/?tipe=manhwa`;
     const $ = await fetchHTML(url);
-    result = parseComicCards($);
+    result = parseComicCards($).slice(0, 15);
   } catch {}
 
   if (result.length === 0) {
@@ -618,7 +624,7 @@ export async function getRecommendedManga(page: number): Promise<Comic[]> {
     if (result.length === 0) result = all.slice(15, 30);
   }
 
-  setCache(cacheKey, result);
+  setCache(cacheKey, result, 15 * 60 * 1000);
   return result;
 }
 
@@ -629,11 +635,26 @@ export async function getNewestManga(page: number): Promise<Comic[]> {
 
   let result: Comic[] = [];
   try {
-    const url = page !== 1
-      ? `${BASE_URL}page/${page}/`
-      : `${BASE_URL}`;
-    const $ = await fetchHTML(url);
-    result = parseComicCards($);
+    if (page === 1) {
+      const $ = await fetchHTML(BASE_URL);
+      $('.ls2').each((_, el) => {
+        const $el = $(el);
+        const titleA = $el.find('h4 a, h3 a').first();
+        const title = titleA.text().trim() || $el.find('h4, h3').text().trim();
+        const link = titleA.attr('href') || $el.find('a[href*="/manga/"]').attr('href');
+        const endpoint = cleanEndpoint(link || '');
+        const image = cleanImage($el.find('img').first());
+        const type = $el.find('.type, .tpe1_inf b').text().trim() || 'Manga';
+        if (title && image && endpoint) {
+          result.push({ title, image, type, endpoint });
+        }
+      });
+      result = result.slice(0, 15);
+    } else {
+      const url = `${BASE_URL}daftar-komik/page/${page}/?orderby=modified`;
+      const $ = await fetchHTML(url);
+      result = parseComicCards($).slice(0, 15);
+    }
   } catch {}
 
   if (result.length === 0) {
@@ -643,7 +664,7 @@ export async function getNewestManga(page: number): Promise<Comic[]> {
     if (result.length === 0) result = all.slice(30, 45);
   }
 
-  setCache(cacheKey, result);
+  setCache(cacheKey, result, 15 * 60 * 1000);
   return result;
 }
 

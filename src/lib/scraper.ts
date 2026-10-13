@@ -54,7 +54,7 @@ async function fetchHTML(url: string): Promise<cheerio.CheerioAPI> {
     const res = await fetch(googUrl, {
       headers: fetchHeaders,
       cache: 'no-store',
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(12000),
     });
 
     if (res.ok) {
@@ -75,7 +75,7 @@ async function fetchHTML(url: string): Promise<cheerio.CheerioAPI> {
         Referer: 'https://komiku.org/',
       },
       cache: 'no-store',
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(8000),
     });
 
     if (res.ok) {
@@ -124,13 +124,16 @@ function cleanEndpoint(rawHref: string): string {
     } catch {}
   }
 
-  // Remove host (including *.translate.goog)
+  // Remove host (including *.translate.goog and api-*-*.translate.goog)
   let ep = rawHref.replace(/^https?:\/\/[^/]+/, '');
-  // Remove query params
+  // Remove query params (translate.goog appends _x_tr_* params)
   ep = ep.split('?')[0];
-  // Remove /manga/ prefix
+  // Remove fragment
+  ep = ep.split('#')[0];
+  // Remove /manga/ prefix if present
   ep = ep.replace(/^\/?manga\//, '/');
 
+  if (!ep || ep === '/') return '';
   if (!ep.startsWith('/')) ep = '/' + ep;
   if (!ep.endsWith('/')) ep = ep + '/';
   return ep;
@@ -355,7 +358,16 @@ export async function getComicInfo(endpoint: string): Promise<ComicInfo> {
     const status = $('td:contains("Status"), th:contains("Status")').next().text().trim() || $('span:contains("Status")').text().replace('Status', '').trim() || 'Ongoing';
     const author = $('td:contains("Pengarang"), th:contains("Pengarang")').next().text().trim() || $('span:contains("Author")').text().replace('Author', '').trim() || '-';
     const rating = $('td:contains("Rating"), th:contains("Rating")').next().text().trim() || $('.rating-star').text().trim() || '8.5';
-    const synopsis = $('#Sinopsis p, .desc p, .sinopsis p').text().trim() || 'Sinopsis belum tersedia.';
+    
+    // Synopsis: try multiple selectors — #Sinopsis is a <section id="Sinopsis">
+    let synopsis = '';
+    const synopSection = $('#Sinopsis');
+    if (synopSection.length) {
+      synopsis = synopSection.find('p').text().trim();
+      if (!synopsis) synopsis = synopSection.text().trim();
+    }
+    if (!synopsis) synopsis = $('.desc p, .sinopsis p').first().text().trim();
+    if (!synopsis) synopsis = 'Sinopsis belum tersedia.';
 
     const comicInfo: ComicInfo = {
       title,
@@ -374,20 +386,39 @@ export async function getComicInfo(endpoint: string): Promise<ComicInfo> {
       if (g) comicInfo.genre.push(g);
     });
 
-    $('#Chapter_List_Items li, .lchx, #Daftar_Chapter td.judulseries').each((_, el) => {
-      const a = $(el).find('a');
+    // Chapter list: structure is <table id="Daftar_Chapter"><tbody id="daftarChapter">
+    // Each chapter row: <tr><td class="judulseries"><a href>Chapter Name</a></td><td class="tanggalseries">Date</td></tr>
+    // Skip the header row (first tr has <th> not <td>)
+    $('#daftarChapter tr').each((_, el) => {
+      const td = $(el).find('td.judulseries');
+      if (td.length === 0) return; // skip header row with <th>
+      const a = td.find('a');
       if (a.length > 0) {
         const ep = cleanEndpoint(a.attr('href') || '');
-        let date = $(el).find('.tanggalseries, .dt').text().trim();
-        if (!date) date = $(el).next('.tanggalseries, .dt').text().trim();
-
+        if (!ep) return;
+        // Date is sibling td.tanggalseries
+        const date = $(el).find('.tanggalseries').text().trim() || '-';
         comicInfo.chapter_list.push({
           name: a.text().trim(),
           endpoint: ep,
-          date: date || '-',
+          date,
         });
       }
     });
+    
+    // Fallback: older selector styles
+    if (comicInfo.chapter_list.length === 0) {
+      $('#Chapter_List_Items li, .lchx').each((_, el) => {
+        const a = $(el).find('a');
+        if (a.length > 0) {
+          const ep = cleanEndpoint(a.attr('href') || '');
+          if (!ep) return;
+          const date = $(el).find('.tanggalseries, .dt').text().trim() ||
+            $(el).siblings('.tanggalseries, .dt').text().trim() || '-';
+          comicInfo.chapter_list.push({ name: a.text().trim(), endpoint: ep, date });
+        }
+      });
+    }
 
     if (comicInfo.title) {
       setCache(cacheKey, comicInfo, 10 * 60 * 1000);
@@ -600,20 +631,31 @@ export async function getListChapter(endpoint: string): Promise<Chapter[]> {
 
   try {
     const $ = await fetchHTML(url);
-    $('#Chapter_List_Items li, .lchx, #Daftar_Chapter td.judulseries').each((_, el) => {
-      const a = $(el).find('a');
+    // Primary: new table structure
+    $('#daftarChapter tr').each((_, el) => {
+      const td = $(el).find('td.judulseries');
+      if (td.length === 0) return;
+      const a = td.find('a');
       if (a.length > 0) {
         const chapterEndpoint = cleanEndpoint(a.attr('href') || '');
-        let date = $(el).find('.tanggalseries, .dt').text().trim();
-        if (!date) date = $(el).next('.tanggalseries, .dt').text().trim();
-
-        chapters.push({
-          name: a.text().trim(),
-          endpoint: chapterEndpoint,
-          date: date || '-',
-        });
+        if (!chapterEndpoint) return;
+        const date = $(el).find('.tanggalseries').text().trim() || '-';
+        chapters.push({ name: a.text().trim(), endpoint: chapterEndpoint, date });
       }
     });
+    // Fallback: older styles
+    if (chapters.length === 0) {
+      $('#Chapter_List_Items li, .lchx').each((_, el) => {
+        const a = $(el).find('a');
+        if (a.length > 0) {
+          const chapterEndpoint = cleanEndpoint(a.attr('href') || '');
+          if (!chapterEndpoint) return;
+          const date = $(el).find('.tanggalseries, .dt').text().trim() ||
+            $(el).siblings('.tanggalseries, .dt').text().trim() || '-';
+          chapters.push({ name: a.text().trim(), endpoint: chapterEndpoint, date });
+        }
+      });
+    }
   } catch {}
 
   if (chapters.length === 0) {
@@ -646,6 +688,8 @@ export async function getChapterDetail(endpoint: string): Promise<ChapterDetail>
     $('#Baca_Komik img, .reader-area img, #chimg-auh img').each((_, el) => {
       let src = $(el).attr('src') || $(el).attr('data-src') || '';
       if (src && !src.includes('lazy.jpg') && !src.includes('lazy.png')) {
+        // Filter out promotional/banner images
+        if (src.includes('komiku-promosi') || src.includes('banner') || src.includes('promo')) return;
         if (src.includes('translate.goog')) {
           src = src.replace(/https?:\/\/([a-z0-9-]+)\.translate\.goog/i, (_, host) => `https://${host.replace(/-/g, '.')}`);
         }
@@ -656,21 +700,41 @@ export async function getChapterDetail(endpoint: string): Promise<ChapterDetail>
       }
     });
 
-    title = $('.mk-chapter__title, .chapter-title, h1').first().text().trim();
+    // h1 has the correct title (e.g. "Magic Emperor Chapter 921")
+    // .judulbaca returns "Baca Online" which we skip
+    title = $('h1').first().text().trim();
+    if (!title || title.toLowerCase().startsWith('baca')) {
+      title = $('.mk-chapter__title, .chapter-title').first().text().trim();
+    }
 
-    $('a:contains("Next"), a:contains("Next Chapter"), a.nx').each((_, el) => {
-      const href = $(el).attr('href');
-      if (href && !next_chapter && !href.includes('#')) {
-        next_chapter = cleanEndpoint(href);
-      }
-    });
-
-    $('a:contains("Prev"), a:contains("Prev Chapter"), a.pr').each((_, el) => {
+    // Next/Prev chapter: komiku uses aria-label="Prev" / aria-label="Next" on <a class="btn">
+    // The "Prev" link (lower chapter number) is usually shown for the "previous" chapter
+    // and "Next" is not present when on the latest chapter
+    $('a[aria-label="Prev"], a.rl').each((_, el) => {
       const href = $(el).attr('href');
       if (href && !prev_chapter && !href.includes('#')) {
         prev_chapter = cleanEndpoint(href);
       }
     });
+
+    $('a[aria-label="Next"]').each((_, el) => {
+      const href = $(el).attr('href');
+      if (href && !next_chapter && !href.includes('#')) {
+        next_chapter = cleanEndpoint(href);
+      }
+    });
+    
+    // Fallback: old selectors
+    if (!prev_chapter && !next_chapter) {
+      $('a:contains("Next"), a:contains("Next Chapter"), a.nx').each((_, el) => {
+        const href = $(el).attr('href');
+        if (href && !next_chapter && !href.includes('#')) next_chapter = cleanEndpoint(href);
+      });
+      $('a:contains("Prev"), a:contains("Prev Chapter"), a.pr').each((_, el) => {
+        const href = $(el).attr('href');
+        if (href && !prev_chapter && !href.includes('#')) prev_chapter = cleanEndpoint(href);
+      });
+    }
   } catch {}
 
   if (!title) {

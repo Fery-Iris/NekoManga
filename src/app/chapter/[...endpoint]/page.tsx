@@ -16,12 +16,24 @@ interface ChapterData {
   prev_chapter?: string;
 }
 
+function normalizeSlug(str: string | undefined | null): string {
+  if (!str) return '';
+  return str.replace(/^\/+|\/+$/g, '').replace(/^manga\//, '');
+}
+
+function inferComicSlug(chEndpoint: string): string {
+  const clean = normalizeSlug(chEndpoint);
+  return clean
+    .replace(/-chapter-[^-/]+.*$/i, '')
+    .replace(/-ch-[^-/]+.*$/i, '');
+}
+
 export default function ChapterReaderPage({ params }: { params: Promise<{ endpoint: string[] }> }) {
   const { endpoint } = use(params);
   const fullEndpoint = decodeURIComponent(endpoint.join('/'));
   const router = useRouter();
   const searchParams = useSearchParams();
-  const comicEndpoint = searchParams.get('comic');
+  const rawComicEndpoint = searchParams.get('comic');
   const chapterName = searchParams.get('cname');
   
   const [chapter, setChapter] = useState<ChapterData | null>(null);
@@ -31,20 +43,41 @@ export default function ChapterReaderPage({ params }: { params: Promise<{ endpoi
   
   const { data: session } = useSession();
 
-  // Save history
+  const cleanChapter = normalizeSlug(fullEndpoint);
+  const cleanComic = normalizeSlug(rawComicEndpoint || inferComicSlug(fullEndpoint));
+
+  // Save history both to localStorage and DB whenever chapter data is loaded or changes
   useEffect(() => {
-    if (session?.user && comicEndpoint && chapterName) {
+    if (!cleanChapter || !cleanComic) return;
+
+    const currentChapterName = chapterName || chapter?.title || `Chapter ${cleanChapter}`;
+
+    // 1. Always update LocalStorage for instant and offline history
+    try {
+      const localHistory = JSON.parse(localStorage.getItem('nekoma_history') || '{}');
+      localHistory[cleanComic] = {
+        name: currentChapterName,
+        endpoint: cleanChapter,
+        date: new Date().toISOString()
+      };
+      localStorage.setItem('nekoma_history', JSON.stringify(localHistory));
+    } catch (err) {
+      console.error('Failed to save history to localStorage', err);
+    }
+
+    // 2. If user is logged in, sync to database
+    if (session?.user) {
       fetch('/api/history', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          comicEndpoint,
-          chapterName,
-          chapterEndpoint: fullEndpoint
+          comicEndpoint: cleanComic,
+          chapterName: currentChapterName,
+          chapterEndpoint: cleanChapter
         })
       }).catch(err => console.error('Failed to save history to DB', err));
     }
-  }, [session, comicEndpoint, chapterName, fullEndpoint]);
+  }, [cleanChapter, cleanComic, chapterName, chapter?.title, session]);
 
   useEffect(() => {
     const loadChapter = async () => {
@@ -66,10 +99,13 @@ export default function ChapterReaderPage({ params }: { params: Promise<{ endpoi
   if (loading) return <Loader />;
   if (!chapter) return <div className="container" style={{ marginTop: '2rem' }}>Chapter not found.</div>;
 
+  const prevClean = chapter.prev_chapter ? normalizeSlug(chapter.prev_chapter) : null;
+  const nextClean = chapter.next_chapter ? normalizeSlug(chapter.next_chapter) : null;
+
   return (
     <div className="reader-container">
       <div className="reader-topbar glass-panel">
-        <button onClick={() => router.back()} className="back-btn flex-center" id="back-btn">
+        <button onClick={() => cleanComic ? router.push(`/comic/${encodeURIComponent(cleanComic)}`) : router.back()} className="back-btn flex-center" id="back-btn">
           <ArrowLeft size={20} />
           <span>Kembali</span>
         </button>
@@ -131,35 +167,48 @@ export default function ChapterReaderPage({ params }: { params: Promise<{ endpoi
       </div>
 
       {/* Reaction Section */}
-      <ReactionSection endpoint={fullEndpoint} />
+      <ReactionSection endpoint={cleanChapter} />
       
       <div className="reader-footer glass-panel">
         <p>Akhir dari {chapter.title}</p>
         <div className="chapter-navigation" style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', flexWrap: 'wrap', justifyContent: 'center', width: '100%', maxWidth: '600px' }}>
-          {chapter.prev_chapter ? (
-            <button onClick={() => router.push(`/chapter/${chapter.prev_chapter}${comicEndpoint ? `?comic=${comicEndpoint}` : ''}`)} className="reader-footer-btn flex-center" style={{ flex: 1, minWidth: '160px', gap: '0.5rem' }}>
+          {prevClean ? (
+            <button 
+              onClick={() => router.push(`/chapter/${encodeURIComponent(prevClean)}?comic=${encodeURIComponent(cleanComic)}`)} 
+              className="reader-footer-btn flex-center" 
+              style={{ flex: 1, minWidth: '160px', gap: '0.5rem' }}
+            >
               <ArrowLeft size={16} /> Sebelumnya
             </button>
           ) : (
-             <div style={{ flex: 1, minWidth: '160px' }}></div>
+            <div style={{ flex: 1, minWidth: '160px' }}></div>
           )}
           
-          <button onClick={() => comicEndpoint ? router.push(`/comic/${comicEndpoint}`) : router.back()} className="reader-footer-btn" id="go-back-btn" style={{ flex: 1, minWidth: '160px' }}>
+          <button 
+            onClick={() => cleanComic ? router.push(`/comic/${encodeURIComponent(cleanComic)}`) : router.back()} 
+            className="reader-footer-btn" 
+            id="go-back-btn" 
+            style={{ flex: 1, minWidth: '160px' }}
+          >
             Daftar Chapter
           </button>
           
-          {chapter.next_chapter ? (
-            <button onClick={() => router.push(`/chapter/${chapter.next_chapter}${comicEndpoint ? `?comic=${comicEndpoint}` : ''}`)} className="reader-footer-btn flex-center" style={{ flex: 1, minWidth: '160px', gap: '0.5rem', background: 'var(--primary-accent)' }}>
+          {nextClean ? (
+            <button 
+              onClick={() => router.push(`/chapter/${encodeURIComponent(nextClean)}?comic=${encodeURIComponent(cleanComic)}`)} 
+              className="reader-footer-btn flex-center" 
+              style={{ flex: 1, minWidth: '160px', gap: '0.5rem', background: 'var(--primary-accent)' }}
+            >
               Berikutnya <ArrowRight size={16} />
             </button>
           ) : (
-             <div style={{ flex: 1, minWidth: '160px' }}></div>
+            <div style={{ flex: 1, minWidth: '160px' }}></div>
           )}
         </div>
       </div>
 
       {/* Interactive Comment Section */}
-      <CommentSection endpoint={fullEndpoint} />
+      <CommentSection endpoint={cleanChapter} />
     </div>
   );
 }

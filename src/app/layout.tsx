@@ -38,7 +38,20 @@ export default function RootLayout({
           </ThemeProvider>
         </AuthProvider>
 
-        {/* Service Worker Removed */}
+        {/* Unregister any stale Service Worker */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                  for (var registration of registrations) {
+                    registration.unregister();
+                  }
+                });
+              }
+            `,
+          }}
+        />
       </body>
     </html>
   );

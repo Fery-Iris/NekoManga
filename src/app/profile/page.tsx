@@ -140,17 +140,23 @@ export default function ProfilePage() {
         {activeTab === 'history' && (
           <div className="history-list" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {history.length > 0 ? history.map((item, idx) => {
-              const endpoint = item.comicEndpoint || item.endpoint;
-              const chapterName = item.chapterName || item.name;
+              const cleanComic = (item.comicEndpoint || item.endpoint || '').replace(/^\/+|\/+$/g, '').replace(/^manga\//, '');
+              const cleanChapter = (item.chapterEndpoint || item.endpoint || '').replace(/^\/+|\/+$/g, '');
+              const chapterName = item.chapterName || item.name || 'Chapter';
+              const comicTitle = cleanComic.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
               
+              const targetLink = cleanChapter 
+                ? `/chapter/${encodeURIComponent(cleanChapter)}?comic=${encodeURIComponent(cleanComic)}` 
+                : `/comic/${encodeURIComponent(cleanComic)}`;
+
               return (
                 <div key={idx} className="history-item glass-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.5rem', borderRadius: '12px' }}>
                   <div>
-                    <h3 style={{ color: 'var(--text-primary)', fontSize: '1.2rem', marginBottom: '0.2rem' }}>{endpoint.replace(/-/g, ' ').toUpperCase()}</h3>
+                    <h3 style={{ color: 'var(--text-primary)', fontSize: '1.2rem', marginBottom: '0.2rem' }}>{comicTitle}</h3>
                     <p style={{ color: 'var(--primary-accent)', fontWeight: 600 }}>Terakhir dibaca: {chapterName}</p>
                   </div>
-                  <Link href={`/comic/${encodeURIComponent(endpoint)}`} className="btn-primary flex-center" style={{ gap: '0.5rem', borderRadius: '8px' }}>
-                    Lanjutkan <ChevronRight size={18} />
+                  <Link href={targetLink} className="btn-primary flex-center" style={{ gap: '0.5rem', borderRadius: '8px', padding: '0.6rem 1.25rem' }}>
+                    Lanjut Baca <ChevronRight size={18} />
                   </Link>
                 </div>
               );

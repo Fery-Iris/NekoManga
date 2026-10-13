@@ -22,25 +22,39 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     const loadData = async () => {
       try {
-        const [popData, recData, newData] = await Promise.all([
+        const [popRes, recRes, newRes] = await Promise.allSettled([
           fetchPopular(),
           fetchRecommended(),
           fetchNewest()
         ]);
         
-        if (popData.success) setPopular(popData.data);
-        if (recData.success) setRecommended(recData.data);
-        if (newData.success) setNewest(newData.data);
+        if (!isMounted) return;
+
+        if (popRes.status === 'fulfilled' && popRes.value?.success && Array.isArray(popRes.value.data)) {
+          setPopular(popRes.value.data);
+        }
+        if (recRes.status === 'fulfilled' && recRes.value?.success && Array.isArray(recRes.value.data)) {
+          setRecommended(recRes.value.data);
+        }
+        if (newRes.status === 'fulfilled' && newRes.value?.success && Array.isArray(newRes.value.data)) {
+          setNewest(newRes.value.data);
+        }
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
     
     loadData();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   if (loading) {

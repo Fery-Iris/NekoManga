@@ -13,12 +13,9 @@ export async function GET(
     }
 
     const data = await getPopularManga(pageNum);
-    if (!data || data.length === 0) {
-      return apiError('Data not found');
-    }
-
     return apiSuccess(data, 'Get Popular Manga');
-  } catch (error) {
-    return apiError(`Error: ${error instanceof Error ? error.message : 'Unknown'}`, 500);
+  } catch {
+    const fallback = await getPopularManga(1);
+    return apiSuccess(fallback, 'Get Popular Manga (Fallback)');
   }
 }

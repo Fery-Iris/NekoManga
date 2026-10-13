@@ -29,10 +29,16 @@ interface ComicData {
   chapter_list: Chapter[];
 }
 
+function normalizeSlug(str: string | undefined | null): string {
+  if (!str) return '';
+  return str.replace(/^\/+|\/+$/g, '').replace(/^manga\//, '');
+}
+
 export default function ComicDetailPage({ params }: { params: Promise<{ endpoint: string[] }> }) {
   const { endpoint } = use(params);
   const router = useRouter();
   const fullEndpoint = decodeURIComponent(endpoint.join('/'));
+  const cleanFullEndpoint = normalizeSlug(fullEndpoint);
   const [comic, setComic] = useState<ComicData | null>(null);
   const [loading, setLoading] = useState(true);
   
@@ -51,6 +57,7 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
         if (res.success) {
           setComic(res.data);
           
+          let foundHistory = false;
           if (session?.user) {
             // Fetch from database if logged in
             try {
@@ -61,27 +68,43 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
               
               if (bmRes.ok) {
                 const bookmarks = await bmRes.json();
-                setIsBookmarked(bookmarks.some((b: any) => b.comicEndpoint === fullEndpoint));
+                setIsBookmarked(bookmarks.some((b: any) => normalizeSlug(b.comicEndpoint) === cleanFullEndpoint));
               }
               
               if (histRes.ok) {
                 const historyList = await histRes.json();
-                const currentHist = historyList.find((h: any) => h.comicEndpoint === fullEndpoint);
+                const currentHist = historyList.find((h: any) => normalizeSlug(h.comicEndpoint) === cleanFullEndpoint);
                 if (currentHist) {
-                  setRecentChapter({ name: currentHist.chapterName, endpoint: currentHist.chapterEndpoint });
+                  setRecentChapter({ name: currentHist.chapterName, endpoint: normalizeSlug(currentHist.chapterEndpoint) });
+                  foundHistory = true;
                 }
               }
             } catch (err) {
               console.error('Failed to fetch DB data', err);
             }
-          } else {
-            // Fallback to LocalStorage if guest
-            const bookmarks = JSON.parse(localStorage.getItem('nekoma_bookmarks') || '[]');
-            setIsBookmarked(bookmarks.some((b: any) => b.endpoint === fullEndpoint));
-            
-            const history = JSON.parse(localStorage.getItem('nekoma_history') || '{}');
-            if (history[fullEndpoint]) {
-              setRecentChapter(history[fullEndpoint]);
+          }
+
+          // Fallback to LocalStorage (guest or if DB has no entry yet)
+          if (!foundHistory) {
+            try {
+              const bookmarks = JSON.parse(localStorage.getItem('nekoma_bookmarks') || '[]');
+              setIsBookmarked(bookmarks.some((b: any) => normalizeSlug(b.endpoint) === cleanFullEndpoint));
+              
+              const history = JSON.parse(localStorage.getItem('nekoma_history') || '{}');
+              const localEntry = history[cleanFullEndpoint] || 
+                history[`/${cleanFullEndpoint}/`] ||
+                history[`/${cleanFullEndpoint}`] ||
+                history[cleanFullEndpoint + '/'] ||
+                Object.entries(history).find(([k]) => normalizeSlug(k) === cleanFullEndpoint)?.[1];
+
+              if (localEntry) {
+                setRecentChapter({
+                  name: localEntry.name,
+                  endpoint: normalizeSlug(localEntry.endpoint)
+                });
+              }
+            } catch (err) {
+              console.error('Failed to parse localStorage history', err);
             }
           }
         }
@@ -93,7 +116,7 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
     };
     
     loadComic();
-  }, [fullEndpoint, session]);
+  }, [fullEndpoint, cleanFullEndpoint, session]);
 
   const toggleBookmark = async () => {
     if (!comic) return;
@@ -156,8 +179,8 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
       chapterName = firstChapter.name;
     }
 
-    const cleanEp = targetEndpoint.startsWith('/') ? targetEndpoint.slice(1) : targetEndpoint;
-    router.push(`/chapter/${encodeURIComponent(cleanEp)}?comic=${fullEndpoint}&cname=${encodeURIComponent(chapterName)}`);
+    const cleanEp = normalizeSlug(targetEndpoint);
+    router.push(`/chapter/${encodeURIComponent(cleanEp)}?comic=${encodeURIComponent(cleanFullEndpoint)}&cname=${encodeURIComponent(chapterName)}`);
   };
 
   if (loading) return <Loader />;
@@ -251,18 +274,26 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
 
           <div className="chapters-list-epic">
             {comic.chapter_list?.slice((currentChapterPage - 1) * chaptersPerPage, currentChapterPage * chaptersPerPage).map((chapter: Chapter, idx: number) => {
-               const cleanEp = chapter.endpoint.startsWith('/') ? chapter.endpoint.slice(1) : chapter.endpoint;
-               const isRead = recentChapter?.endpoint === chapter.endpoint;
+               const cleanEp = normalizeSlug(chapter.endpoint);
+               const isRead = Boolean(
+                 recentChapter && (
+                   normalizeSlug(recentChapter.endpoint) === cleanEp ||
+                   (recentChapter.name && chapter.name && recentChapter.name.trim().toLowerCase() === chapter.name.trim().toLowerCase())
+                 )
+               );
                
                return (
                  <Link 
-                   href={`/chapter/${encodeURIComponent(cleanEp)}?comic=${fullEndpoint}&cname=${encodeURIComponent(chapter.name)}`} 
+                   href={`/chapter/${encodeURIComponent(cleanEp)}?comic=${encodeURIComponent(cleanFullEndpoint)}&cname=${encodeURIComponent(chapter.name)}`} 
                    className="chapter-item-epic glass-panel" 
                    key={idx}
                    onClick={() => {
-                     const history = JSON.parse(localStorage.getItem('nekoma_history') || '{}');
-                     history[fullEndpoint] = { name: chapter.name, endpoint: chapter.endpoint };
-                     localStorage.setItem('nekoma_history', JSON.stringify(history));
+                     try {
+                       const history = JSON.parse(localStorage.getItem('nekoma_history') || '{}');
+                       history[cleanFullEndpoint] = { name: chapter.name, endpoint: cleanEp };
+                       localStorage.setItem('nekoma_history', JSON.stringify(history));
+                     } catch {}
+                     setRecentChapter({ name: chapter.name, endpoint: cleanEp });
                    }}
                  >
                    <div className="chapter-item-content">

@@ -26,10 +26,19 @@ export default function ComicCard({ title, image, endpoint, type }: ComicCardPro
           loading="lazy" 
           referrerPolicy="no-referrer"
           onError={(e) => {
-            if (!e.currentTarget.dataset.fallback) {
-              e.currentTarget.dataset.fallback = '1';
-              e.currentTarget.src = `/api/proxy?url=${encodeURIComponent(cleanImage)}`;
-            } else {
+            const currentSrc = e.currentTarget.src;
+            const stage = e.currentTarget.dataset.fallbackStage || '0';
+            if (stage === '0' && currentSrc.includes('-Komik-')) {
+              e.currentTarget.dataset.fallbackStage = '1';
+              e.currentTarget.src = currentSrc.replace('-Komik-', '-Manga-');
+            } else if ((stage === '0' || stage === '1') && currentSrc.includes('-Manga-')) {
+              e.currentTarget.dataset.fallbackStage = '2';
+              e.currentTarget.src = currentSrc.replace('-Manga-', '-Manhwa-');
+            } else if ((stage === '0' || stage === '1' || stage === '2') && currentSrc.includes('-Manhwa-')) {
+              e.currentTarget.dataset.fallbackStage = '3';
+              e.currentTarget.src = currentSrc.replace('-Manhwa-', '-Manhua-');
+            } else if (stage !== 'final') {
+              e.currentTarget.dataset.fallbackStage = 'final';
               e.currentTarget.src = '/icon.png';
             }
           }}

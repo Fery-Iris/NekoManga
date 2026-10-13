@@ -477,14 +477,15 @@ export async function getComicInfo(endpoint: string): Promise<ComicInfo> {
  * Build a thumbnail URL from a manga slug and title.
  * Komiku uses pattern: thumbnail.komiku.org/uploads/manga/{slug}/manga_thumbnail-Komik-{TitleWords}.jpg
  */
-function buildThumbnailFromSlug(slug: string, title: string): string {
+function buildThumbnailFromSlug(slug: string, title: string, type: string = 'Komik'): string {
   const titlePart = title
     .replace(/<[^>]+>/g, '') // strip html entities
     .replace(/[–—]/g, '-')   // normalize dashes
     .replace(/[^a-zA-Z0-9\s-]/g, '') // remove special chars
     .trim()
     .replace(/\s+/g, '-');   // spaces to dashes
-  return `https://thumbnail.komiku.org/uploads/manga/${slug}/manga_thumbnail-Komik-${titlePart}.jpg`;
+  const prefix = (type === 'Manhwa' || type === 'Manhua') ? type : 'Komik';
+  return `https://thumbnail.komiku.org/uploads/manga/${slug}/manga_thumbnail-${prefix}-${titlePart}.jpg`;
 }
 
 export async function searchManga(query: string, genre?: string): Promise<Comic[]> {
@@ -493,77 +494,108 @@ export async function searchManga(query: string, genre?: string): Promise<Comic[
   if (cached && cached.length > 0) return cached;
 
   let result: Comic[] = [];
+  const seenSlugs = new Set<string>();
+  const thumbMap = new Map<string, string>();
 
-  // 1. PRIMARY: WordPress REST API — api.komiku.org is NOT blocked by Vercel datacenter IPs
-  //    komiku.org has Cloudflare protection blocking Vercel, but api.komiku.org doesn't
-  const wpApiHosts = ['https://api.komiku.org', 'https://komiku.org'];
-  for (const host of wpApiHosts) {
+  // 1. Scrape HTML search results in parallel to collect exact CDN thumbnails
+  try {
+    const htmlUrls = [
+      `https://api.komiku.org/?post_type=manga&s=${encodeURIComponent(query)}`,
+      `https://api.komiku.org/page/2/?post_type=manga&s=${encodeURIComponent(query)}`,
+    ];
+    const scrapedLists = await Promise.all(
+      htmlUrls.map(async (url) => {
+        try {
+          const $ = await fetchHTML(url);
+          return parseComicCards($);
+        } catch {
+          return [];
+        }
+      })
+    );
+    for (const list of scrapedLists) {
+      for (const item of list) {
+        const slug = item.endpoint.replace(/\//g, '');
+        if (slug && item.image) {
+          thumbMap.set(slug, item.image);
+        }
+      }
+    }
+  } catch {}
+
+  // 2. PRIMARY: WordPress REST API via Jina proxy (bypasses Cloudflare on Vercel) and direct
+  const wpEndpoints = [
+    `https://r.jina.ai/https://api.komiku.org/wp-json/wp/v2/manga?search=${encodeURIComponent(query)}&per_page=50`,
+    `https://r.jina.ai/https://komiku.org/wp-json/wp/v2/manga?search=${encodeURIComponent(query)}&per_page=50`,
+    `https://api.komiku.org/wp-json/wp/v2/manga?search=${encodeURIComponent(query)}&per_page=50`,
+    `https://komiku.org/wp-json/wp/v2/manga?search=${encodeURIComponent(query)}&per_page=50`,
+  ];
+
+  for (const url of wpEndpoints) {
     if (result.length > 0) break;
     try {
-      // Note: no _fields filter - we need the full class_list which includes tipe-manhwa/manhua etc.
-      const wpUrl = `${host}/wp-json/wp/v2/manga?search=${encodeURIComponent(query)}&per_page=50`;
-      const res = await fetch(wpUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      const isJina = url.includes('r.jina.ai');
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          ...(isJina ? { 'X-Return-Format': 'text' } : {}),
+        },
         cache: 'no-store',
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(10000),
       });
       if (res.ok) {
         const text = await res.text();
         let json: Array<{ id: number; slug: string; title: { rendered: string }; class_list?: string[] }>;
-        try { json = JSON.parse(text); } catch { continue; }
+        try {
+          json = JSON.parse(text);
+        } catch {
+          continue;
+        }
         if (Array.isArray(json) && json.length > 0) {
-          const seen = new Set<string>();
           for (const item of json) {
             const rawTitle = item.title?.rendered?.replace(/<[^>]+>/g, '').trim() || '';
             const slug = item.slug;
-            if (!rawTitle || !slug || seen.has(slug)) continue;
-            seen.add(slug);
-            // Extract type from class_list e.g. "tipe-manhwa", "tipe-manhua", "tipe-manga"
+            if (!rawTitle || !slug || seenSlugs.has(slug)) continue;
+
             const classList = item.class_list || [];
             const typeClass = classList.find((c: string) => c.startsWith('tipe-'));
             const type = typeClass
               ? typeClass.replace('tipe-', '').charAt(0).toUpperCase() + typeClass.replace('tipe-', '').slice(1)
               : 'Manga';
+
+            if (genre && genre !== 'Semua') {
+              const genreLower = genre.toLowerCase();
+              const matchesGenre = classList.some((c: string) =>
+                c.toLowerCase() === `genre-${genreLower}` || c.toLowerCase() === `tipe-${genreLower}`
+              ) || type.toLowerCase() === genreLower;
+              if (!matchesGenre) continue;
+            }
+
+            seenSlugs.add(slug);
             const endpoint = `/${slug}/`;
-            const image = buildThumbnailFromSlug(slug, rawTitle);
+            const image = thumbMap.get(slug) || buildThumbnailFromSlug(slug, rawTitle, type);
             result.push({ title: rawTitle, image, type, endpoint });
           }
         }
       }
-    } catch { /* try next host */ }
+    } catch {
+      // try next endpoint
+    }
   }
 
-  // 2. SECONDARY: Multi-page parallel scraping of api.komiku.org search
-  if (result.length === 0) {
-    try {
-      const maxPages = 4;
-      const pages = Array.from({ length: maxPages }, (_, i) => i + 1);
-      const pageResults = await Promise.all(
-        pages.map(async (page) => {
-          try {
-            const url = page === 1
-              ? `https://api.komiku.org/?post_type=manga&s=${encodeURIComponent(query)}`
-              : `https://api.komiku.org/page/${page}/?post_type=manga&s=${encodeURIComponent(query)}`;
-            const $ = await fetchHTML(url);
-            return parseComicCards($);
-          } catch {
-            return [];
-          }
-        })
-      );
-      const seen = new Set<string>();
-      for (const list of pageResults) {
-        for (const item of list) {
-          if (!seen.has(item.endpoint)) {
-            seen.add(item.endpoint);
-            result.push(item);
-          }
-        }
-      }
-    } catch {}
+  // 3. Fallback: If WP API failed, use any cards collected from HTML scrape
+  if (result.length === 0 && thumbMap.size > 0) {
+    for (const [slug, img] of thumbMap.entries()) {
+      result.push({
+        title: slug.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+        image: img,
+        type: 'Manga',
+        endpoint: `/${slug}/`,
+      });
+    }
   }
 
-  // 3. TERTIARY: Direct search endpoint fallback
+  // 4. Fallback: Direct search endpoint fallback
   if (result.length === 0) {
     try {
       let url = `https://api.komiku.org/manga/?s=${encodeURIComponent(query)}`;
@@ -575,7 +607,7 @@ export async function searchManga(query: string, genre?: string): Promise<Comic[
     } catch {}
   }
 
-  // 4. Local filter fallback
+  // 5. Fallback: Local filter
   if (result.length === 0) {
     const all = fallbackData as Comic[];
     result = all.filter((c) => c.title.toLowerCase().includes(query.toLowerCase()));

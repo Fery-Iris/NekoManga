@@ -124,24 +124,56 @@ export default function ChapterReaderPage({ params }: { params: Promise<{ endpoi
       <div className={`reader-images ${readMode}`}>
         {readMode === 'scroll' ? (
           // Scroll Mode: Show all images
-          chapter.image?.map((imgUrl: string, idx: number) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img 
-              key={idx} 
-              src={`/api/proxy?url=${encodeURIComponent(imgUrl)}`} 
-              alt={`${chapter.title} halaman ${idx + 1}`} 
-              loading="lazy"
-              className="reader-page"
-            />
-          ))
+          chapter.image?.map((imgUrl: string, idx: number) => {
+            let cleanImg = imgUrl;
+            if (cleanImg.includes('thumbnail.komiku.to')) {
+              cleanImg = cleanImg.replace('thumbnail.komiku.to', 'thumbnail.komiku.org');
+            }
+            return (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img 
+                key={idx} 
+                src={cleanImg} 
+                alt={`${chapter.title} halaman ${idx + 1}`} 
+                loading={idx < 3 ? 'eager' : 'lazy'}
+                referrerPolicy="no-referrer"
+                className="reader-page"
+                onError={(e) => {
+                  const currentSrc = e.currentTarget.src;
+                  if (!e.currentTarget.dataset.retried) {
+                    e.currentTarget.dataset.retried = '1';
+                    if (currentSrc.includes('komiku.to')) {
+                      e.currentTarget.src = currentSrc.replace('komiku.to', 'komiku.org');
+                    } else if (currentSrc.includes('komiku.org')) {
+                      e.currentTarget.src = currentSrc.replace('komiku.org', 'komiku.to');
+                    } else {
+                      e.currentTarget.src = `/api/proxy?url=${encodeURIComponent(cleanImg)}`;
+                    }
+                  }
+                }}
+              />
+            );
+          })
         ) : (
           // Single Page Mode: Show one image at a time
           <div className="single-page-wrapper">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img 
-              src={`/api/proxy?url=${encodeURIComponent(chapter.image[currentPage])}`} 
+              src={chapter.image[currentPage]} 
               alt={`${chapter.title} halaman ${currentPage + 1}`} 
               className="reader-page single"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                const currentSrc = e.currentTarget.src;
+                if (!e.currentTarget.dataset.retried) {
+                  e.currentTarget.dataset.retried = '1';
+                  if (currentSrc.includes('komiku.to')) {
+                    e.currentTarget.src = currentSrc.replace('komiku.to', 'komiku.org');
+                  } else {
+                    e.currentTarget.src = `/api/proxy?url=${encodeURIComponent(chapter.image[currentPage])}`;
+                  }
+                }
+              }}
             />
             <div className="single-page-nav">
               <button 

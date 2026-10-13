@@ -119,7 +119,14 @@ export default function ProfilePage() {
               return (
                 <Link key={idx} href={`/comic/${encodeURIComponent(endpoint)}`} className="comic-card">
                   <div className="comic-cover-wrapper">
-                    <img src={thumbnail || "/icon.png"} alt={title} className="comic-cover" loading="lazy" />
+                    <img 
+                      src={thumbnail || "/icon.png"} 
+                      alt={title} 
+                      className="comic-cover" 
+                      loading="lazy" 
+                      referrerPolicy="no-referrer"
+                      onError={(e) => { e.currentTarget.src = '/icon.png'; }}
+                    />
                     {type && <div className="comic-type">{type}</div>}
                   </div>
                   <div className="comic-info">

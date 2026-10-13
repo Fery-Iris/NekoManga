@@ -35,14 +35,18 @@ export default function HeroCarousel({ comics }: { comics: Comic[] }) {
   return (
     <div className="hero-carousel-container">
       {featuredComics.map((comic, idx) => {
-        const itemEp = comic.endpoint.startsWith('/') ? comic.endpoint.slice(1) : comic.endpoint;
+        const itemEp = comic.endpoint.replace(/^\/+|\/+$/g, '').replace(/^manga\//, '');
+        let imgUrl = comic.image;
+        if (imgUrl.includes('thumbnail.komiku.to')) {
+          imgUrl = imgUrl.replace('thumbnail.komiku.to', 'thumbnail.komiku.org');
+        }
         
         return (
           <div 
             key={idx}
             className={`hero-slide ${idx === currentIndex ? 'active' : ''}`}
           >
-            <div className="hero-bg-blur" style={{ backgroundImage: `url(${comic.image})` }} />
+            <div className="hero-bg-blur" style={{ backgroundImage: `url(${imgUrl})` }} />
             <div className="hero-gradient-overlay" />
             
             <div className="hero-content container">
@@ -65,7 +69,15 @@ export default function HeroCarousel({ comics }: { comics: Comic[] }) {
               <div className="hero-image-wrapper">
                  <Link href={`/comic/${encodeURIComponent(itemEp)}`} style={{ display: 'block', width: '100%', height: '100%' }}>
                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                   <img src={`/api/proxy?url=${encodeURIComponent(comic.image)}`} alt={comic.title} className="hero-main-img" />
+                   <img 
+                     src={imgUrl} 
+                     alt={comic.title} 
+                     className="hero-main-img" 
+                     referrerPolicy="no-referrer"
+                     onError={(e) => {
+                       e.currentTarget.src = `/api/proxy?url=${encodeURIComponent(imgUrl)}`;
+                     }}
+                   />
                  </Link>
               </div>
             </div>

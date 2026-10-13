@@ -2,35 +2,34 @@ import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const url = searchParams.get('url');
+  let url = searchParams.get('url');
 
   if (!url) {
     return new NextResponse('Missing URL parameter', { status: 400 });
   }
 
-  try {
-    const res = await fetch(url, {
-      headers: {
-        'Referer': process.env.BASE_URL || 'https://komiku.org/',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-      },
-    });
-
-    if (!res.ok) {
-      return new NextResponse('Failed to fetch image', { status: res.status });
-    }
-
-    const contentType = res.headers.get('content-type') || 'image/jpeg';
-    const buffer = await res.arrayBuffer();
-
-    return new NextResponse(buffer, {
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=31536000, immutable',
-      },
-    });
-  } catch (error) {
-    console.error('Proxy error:', error);
-    return new NextResponse('Internal server error', { status: 500 });
+  // Clean and normalize URL
+  if (url.includes('thumbnail.komiku.to')) {
+    url = url.replace('thumbnail.komiku.to', 'thumbnail.komiku.org');
   }
+  if (url.includes('translate.goog')) {
+    url = url.replace(/https?:\/\/([a-z0-9-]+)\.translate\.goog/i, (_, host) => {
+      return `https://${host.replace(/-/g, '.')}`;
+    });
+  }
+
+  // If local/relative path, redirect to origin
+  if (url.startsWith('/')) {
+    return NextResponse.redirect(new URL(url, request.url));
+  }
+
+  // Redirect client browser directly to image CDN with 307.
+  // The client's residential browser IP can load CDN images directly,
+  // bypassing Cloudflare datacenter IP blocks (HTTP 403) completely.
+  return NextResponse.redirect(url, {
+    status: 307,
+    headers: {
+      'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+    },
+  });
 }

@@ -24,13 +24,58 @@ const DEFAULT_HEADERS = {
   'Upgrade-Insecure-Requests': '1',
 };
 
+function toTranslateGoogUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/\./g, '-');
+    u.hostname = `${host}.translate.goog`;
+    u.searchParams.set('_x_tr_sl', 'en');
+    u.searchParams.set('_x_tr_tl', 'id');
+    u.searchParams.set('_x_tr_hl', 'id');
+    u.searchParams.set('_x_tr_pto', 'wapp');
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 async function fetchHTML(url: string): Promise<cheerio.CheerioAPI> {
-  // 1. Direct fetch with full browser headers
+  const fetchHeaders = {
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+    Accept:
+      'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  };
+
+  // 1. Google Translate Mirror (.translate.goog) - Bypasses Cloudflare datacenter IP blocks completely
+  try {
+    const googUrl = toTranslateGoogUrl(url);
+    const res = await fetch(googUrl, {
+      headers: fetchHeaders,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(6000),
+    });
+
+    if (res.ok) {
+      const html = await res.text();
+      if (html && html.length > 500 && !html.includes('<title>Translate</title>')) {
+        return cheerio.load(html);
+      }
+    }
+  } catch {
+    // try direct fetch next
+  }
+
+  // 2. Direct fetch with browser headers
   try {
     const res = await fetch(url, {
-      headers: DEFAULT_HEADERS,
-      next: { revalidate: 300 }, // 5 min ISR cache
-      signal: AbortSignal.timeout(7000),
+      headers: {
+        ...fetchHeaders,
+        Referer: 'https://komiku.org/',
+      },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(5000),
     });
 
     if (res.ok) {
@@ -40,16 +85,16 @@ async function fetchHTML(url: string): Promise<cheerio.CheerioAPI> {
       }
     }
   } catch {
-    // direct fetch failed, try proxy next
+    // direct fetch failed
   }
 
-  // 2. Google Translate Web Proxy (bypasses Cloudflare datacenter IP blocks)
+  // 3. Fallback: Google Translate Web Proxy
   try {
     const proxyUrl = `https://translate.google.com/website?sl=en&tl=id&hl=id&client=webapp&u=${encodeURIComponent(url)}`;
     const res = await fetch(proxyUrl, {
-      headers: DEFAULT_HEADERS,
-      next: { revalidate: 300 },
-      signal: AbortSignal.timeout(9000),
+      headers: fetchHeaders,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(6000),
     });
 
     if (res.ok) {
@@ -58,27 +103,7 @@ async function fetchHTML(url: string): Promise<cheerio.CheerioAPI> {
         return cheerio.load(html);
       }
     }
-  } catch {
-    // proxy fetch failed
-  }
-
-  // 3. If url points to api.komiku.org, try alternative komiku.org or vice-versa
-  if (url.includes('api.komiku.org')) {
-    const altUrl = url.replace('api.komiku.org', 'komiku.org');
-    try {
-      const proxyUrl = `https://translate.google.com/website?sl=en&tl=id&hl=id&client=webapp&u=${encodeURIComponent(altUrl)}`;
-      const res = await fetch(proxyUrl, {
-        headers: DEFAULT_HEADERS,
-        signal: AbortSignal.timeout(9000),
-      });
-      if (res.ok) {
-        const html = await res.text();
-        if (html && html.length > 500) {
-          return cheerio.load(html);
-        }
-      }
-    } catch {}
-  }
+  } catch {}
 
   throw new Error(`Failed to fetch HTML from ${url}`);
 }
@@ -93,18 +118,18 @@ function cleanEndpoint(rawHref: string): string {
       if (uParam) {
         const match = uParam.match(/\/manga\/([^/?#]+)/i);
         if (match) return `/${match[1]}/`;
+        const pathPart = uParam.replace(/^https?:\/\/[^/]+/, '').split('?')[0];
+        if (pathPart) return pathPart.startsWith('/') ? pathPart : `/${pathPart}`;
       }
     } catch {}
   }
 
-  // Match standard /manga/slug/
-  const match = rawHref.match(/\/manga\/([^/?#]+)/i);
-  if (match) return `/${match[1]}/`;
-
-  let ep = rawHref
-    .replace(/^https?:\/\/[^/]+/, '')
-    .replace(/^\/?manga\//, '/')
-    .split('?')[0];
+  // Remove host (including *.translate.goog)
+  let ep = rawHref.replace(/^https?:\/\/[^/]+/, '');
+  // Remove query params
+  ep = ep.split('?')[0];
+  // Remove /manga/ prefix
+  ep = ep.replace(/^\/?manga\//, '/');
 
   if (!ep.startsWith('/')) ep = '/' + ep;
   if (!ep.endsWith('/')) ep = ep + '/';
@@ -117,6 +142,12 @@ function cleanImage(imgEl: ReturnType<cheerio.CheerioAPI>): string {
     src = imgEl.attr('data-src') || imgEl.attr('data-lazy-src') || '';
   }
   if (!src) src = imgEl.attr('src') || '';
+  if (src.includes('translate.goog')) {
+    src = src.replace(/https?:\/\/([a-z0-9-]+)\.translate\.goog/i, (_, host) => `https://${host.replace(/-/g, '.')}`).split('?')[0];
+  }
+  if (src.includes('thumbnail.komiku.to')) {
+    src = src.replace('thumbnail.komiku.to', 'thumbnail.komiku.org');
+  }
   return src;
 }
 
@@ -313,7 +344,13 @@ export async function getComicInfo(endpoint: string): Promise<ComicInfo> {
 
   if ($) {
     const title = $('#Judul h1, .manga-info h1, h1').first().text().trim();
-    const thumbnail = $('.manga-info img, .ims img, .thumb img').attr('data-src') || $('.manga-info img, .ims img, .thumb img').attr('src') || '';
+    let thumbnail = $('.manga-info img, .ims img, .thumb img').attr('data-src') || $('.manga-info img, .ims img, .thumb img').attr('src') || '';
+    if (thumbnail.includes('thumbnail.komiku.to')) {
+      thumbnail = thumbnail.replace('thumbnail.komiku.to', 'thumbnail.komiku.org');
+    }
+    if (thumbnail.includes('translate.goog')) {
+      thumbnail = thumbnail.replace(/https?:\/\/([a-z0-9-]+)\.translate\.goog/i, (_, host) => `https://${host.replace(/-/g, '.')}`).split('?')[0];
+    }
     const type = $('a[href*="/tipe/"]').text().trim() || 'Manga';
     const status = $('td:contains("Status"), th:contains("Status")').next().text().trim() || $('span:contains("Status")').text().replace('Status', '').trim() || 'Ongoing';
     const author = $('td:contains("Pengarang"), th:contains("Pengarang")').next().text().trim() || $('span:contains("Author")').text().replace('Author', '').trim() || '-';
@@ -607,8 +644,16 @@ export async function getChapterDetail(endpoint: string): Promise<ChapterDetail>
   try {
     const $ = await fetchHTML(url);
     $('#Baca_Komik img, .reader-area img, #chimg-auh img').each((_, el) => {
-      const src = $(el).attr('src') || $(el).attr('data-src');
-      if (src && !src.includes('lazy.jpg') && !src.includes('lazy.png')) images.push(src);
+      let src = $(el).attr('src') || $(el).attr('data-src') || '';
+      if (src && !src.includes('lazy.jpg') && !src.includes('lazy.png')) {
+        if (src.includes('translate.goog')) {
+          src = src.replace(/https?:\/\/([a-z0-9-]+)\.translate\.goog/i, (_, host) => `https://${host.replace(/-/g, '.')}`);
+        }
+        if (src.includes('thumbnail.komiku.to')) {
+          src = src.replace('thumbnail.komiku.to', 'thumbnail.komiku.org');
+        }
+        images.push(src);
+      }
     });
 
     title = $('.mk-chapter__title, .chapter-title, h1').first().text().trim();
@@ -632,13 +677,9 @@ export async function getChapterDetail(endpoint: string): Promise<ChapterDetail>
     title = safeEndpoint.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
   }
 
-  if (images.length === 0) {
-    images = [
-      'https://thumbnail.komiku.org/asset/img/banner.jpg',
-    ];
-  }
-
   const detail: ChapterDetail = { title, image: images, next_chapter, prev_chapter };
-  setCache(cacheKey, detail, 30 * 60 * 1000);
+  if (images.length > 0) {
+    setCache(cacheKey, detail, 30 * 60 * 1000);
+  }
   return detail;
 }

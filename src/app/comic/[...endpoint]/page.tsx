@@ -204,7 +204,19 @@ export default function ComicDetailPage({ params }: { params: Promise<{ endpoint
           <div className="comic-hero-content">
             <div className="comic-cover-large">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={`/api/proxy?url=${encodeURIComponent(comic.thumbnail)}`} alt={comic.title} />
+              <img 
+                src={comic.thumbnail} 
+                alt={comic.title} 
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  if (!e.currentTarget.dataset.fallback) {
+                    e.currentTarget.dataset.fallback = '1';
+                    e.currentTarget.src = `/api/proxy?url=${encodeURIComponent(comic.thumbnail)}`;
+                  } else {
+                    e.currentTarget.src = '/icon.png';
+                  }
+                }}
+              />
             </div>
 
             <div className="comic-info-main">

@@ -102,14 +102,14 @@ export default function Navbar() {
                   {suggestions.map((item, idx) => (
                     <Link 
                       key={idx} 
-                      href={`/comic/${item.endpoint}`} 
+                      href={`/comic/${item.endpoint.replace(/^\/+|\/+$/g, '').replace(/^manga\//, '')}`} 
                       className="suggestion-item"
                       style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: idx === suggestions.length - 1 ? 'none' : '1px solid var(--glass-border)', textDecoration: 'none', color: 'var(--text-primary)', transition: 'background 0.2s' }}
                       onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-color-lighter)'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       onClick={() => { setQuery(''); setShowSuggestions(false); setSearchOpen(false); }}
                     >
-                      <img src={item.image} alt={item.title} style={{ width: '32px', height: '42px', objectFit: 'cover', borderRadius: '4px' }} />
+                      <img src={item.image} alt={item.title} referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.src = '/icon.png'; }} style={{ width: '32px', height: '42px', objectFit: 'cover', borderRadius: '4px' }} />
                       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                         <span style={{ fontSize: '0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</span>
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{item.type || 'Manga'}</span>
@@ -177,12 +177,12 @@ export default function Navbar() {
                   {suggestions.map((item, idx) => (
                     <Link 
                       key={idx} 
-                      href={`/comic/${item.endpoint}`} 
+                      href={`/comic/${item.endpoint.replace(/^\/+|\/+$/g, '').replace(/^manga\//, '')}`} 
                       className="suggestion-item"
                       style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: idx === suggestions.length - 1 ? 'none' : '1px solid var(--glass-border)', textDecoration: 'none', color: 'var(--text-primary)', transition: 'background 0.2s' }}
                       onClick={() => { setQuery(''); setShowSuggestions(false); setSearchOpen(false); }}
                     >
-                      <img src={item.image} alt={item.title} style={{ width: '32px', height: '42px', objectFit: 'cover', borderRadius: '4px' }} />
+                      <img src={item.image} alt={item.title} referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.src = '/icon.png'; }} style={{ width: '32px', height: '42px', objectFit: 'cover', borderRadius: '4px' }} />
                       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                         <span style={{ fontSize: '0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</span>
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{item.type || 'Manga'}</span>

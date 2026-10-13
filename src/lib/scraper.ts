@@ -494,42 +494,44 @@ export async function searchManga(query: string, genre?: string): Promise<Comic[
 
   let result: Comic[] = [];
 
-  // 1. PRIMARY: WordPress REST API — returns clean JSON, no proxy needed, most comprehensive
-  try {
-    // Note: no _fields filter - we need the full class_list which includes tipe-manhwa/manhua etc.
-    const wpUrl = `https://komiku.org/wp-json/wp/v2/manga?search=${encodeURIComponent(query)}&per_page=50`;
-    const res = await fetch(wpUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(10000),
-    });
-    if (res.ok) {
-      const json = await res.json() as Array<{
-        id: number;
-        slug: string;
-        title: { rendered: string };
-        class_list?: string[];
-      }>;
-      if (Array.isArray(json) && json.length > 0) {
-        const seen = new Set<string>();
-        for (const item of json) {
-          const rawTitle = item.title?.rendered?.replace(/<[^>]+>/g, '').trim() || '';
-          const slug = item.slug;
-          if (!rawTitle || !slug || seen.has(slug)) continue;
-          seen.add(slug);
-          // Extract type from class_list e.g. "tipe-manhwa", "tipe-manhua", "tipe-manga"
-          const classList = item.class_list || [];
-          const typeClass = classList.find((c: string) => c.startsWith('tipe-'));
-          const type = typeClass
-            ? typeClass.replace('tipe-', '').charAt(0).toUpperCase() + typeClass.replace('tipe-', '').slice(1)
-            : 'Manga';
-          const endpoint = `/${slug}/`;
-          const image = buildThumbnailFromSlug(slug, rawTitle);
-          result.push({ title: rawTitle, image, type, endpoint });
+  // 1. PRIMARY: WordPress REST API — api.komiku.org is NOT blocked by Vercel datacenter IPs
+  //    komiku.org has Cloudflare protection blocking Vercel, but api.komiku.org doesn't
+  const wpApiHosts = ['https://api.komiku.org', 'https://komiku.org'];
+  for (const host of wpApiHosts) {
+    if (result.length > 0) break;
+    try {
+      // Note: no _fields filter - we need the full class_list which includes tipe-manhwa/manhua etc.
+      const wpUrl = `${host}/wp-json/wp/v2/manga?search=${encodeURIComponent(query)}&per_page=50`;
+      const res = await fetch(wpUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(12000),
+      });
+      if (res.ok) {
+        const text = await res.text();
+        let json: Array<{ id: number; slug: string; title: { rendered: string }; class_list?: string[] }>;
+        try { json = JSON.parse(text); } catch { continue; }
+        if (Array.isArray(json) && json.length > 0) {
+          const seen = new Set<string>();
+          for (const item of json) {
+            const rawTitle = item.title?.rendered?.replace(/<[^>]+>/g, '').trim() || '';
+            const slug = item.slug;
+            if (!rawTitle || !slug || seen.has(slug)) continue;
+            seen.add(slug);
+            // Extract type from class_list e.g. "tipe-manhwa", "tipe-manhua", "tipe-manga"
+            const classList = item.class_list || [];
+            const typeClass = classList.find((c: string) => c.startsWith('tipe-'));
+            const type = typeClass
+              ? typeClass.replace('tipe-', '').charAt(0).toUpperCase() + typeClass.replace('tipe-', '').slice(1)
+              : 'Manga';
+            const endpoint = `/${slug}/`;
+            const image = buildThumbnailFromSlug(slug, rawTitle);
+            result.push({ title: rawTitle, image, type, endpoint });
+          }
         }
       }
-    }
-  } catch { /* fallthrough */ }
+    } catch { /* try next host */ }
+  }
 
   // 2. SECONDARY: Multi-page parallel scraping of api.komiku.org search
   if (result.length === 0) {

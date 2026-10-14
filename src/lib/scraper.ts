@@ -3,6 +3,7 @@ import { Comic, ComicInfo, Chapter, ChapterDetail, Genre } from './types';
 import { getCache, setCache } from './cache';
 import fallbackData from './fallbackData.json';
 import fallbackGenres from './fallbackGenres.json';
+import genreIdMap from './genreIdMap.json';
 
 const BASE_URL = process.env.BASE_URL || 'https://komiku.org/';
 
@@ -308,42 +309,186 @@ export async function getComicByLetter(letter: string, tipe: string, page: numbe
   return result;
 }
 
-export async function advancedFilterManga(orderby: string, tipe: string, genre: string, status: string, page: number): Promise<Comic[]> {
-  const cacheKey = `adv_${orderby}_${tipe}_${genre}_${status}_${page}`;
+export async function advancedFilterManga(
+  orderby: string,
+  tipe: string,
+  genre: string,
+  status: string,
+  page: number,
+  letter: string = ''
+): Promise<Comic[]> {
+  const cleanGenre = (genre || '').replace(/^\/?genre\//, '').replace(/\//g, '').toLowerCase().trim();
+  const cleanLetter = (letter || '').trim().toUpperCase();
+  const cacheKey = `adv_${orderby}_${tipe}_${cleanGenre}_${status}_${cleanLetter}_${page}`;
   const cached = getCache<Comic[]>(cacheKey);
   if (cached && cached.length > 0) return cached;
 
-  let result: Comic[] = [];
-  try {
-    let url = page > 1
-      ? `${BASE_URL}daftar-komik/page/${page}/`
-      : `${BASE_URL}daftar-komik/`;
-
-    const params: string[] = [];
-    if (orderby) params.push(`orderby=${orderby}`);
-    if (tipe) params.push(`tipe=${tipe}`);
-    if (genre) params.push(`genre=${genre}`);
-    if (status) params.push(`status=${status}`);
-    if (params.length > 0) url += '?' + params.join('&');
-
-    const $ = await fetchHTML(url);
-    result = parseComicCards($);
-  } catch {}
-
-  if (result.length === 0) {
-    const all = fallbackData as Comic[];
-    let filtered = all;
-    if (tipe) {
-      filtered = filtered.filter((c) => (c.type || '').toLowerCase().includes(tipe.toLowerCase()));
-    }
-    const startIndex = (page - 1) * 15;
-    result = filtered.slice(startIndex, startIndex + 15);
-    if (result.length === 0) {
-      result = all.slice(0, 15);
+  // Shortcut: if ONLY letter is requested (no genre, no status, default/no orderby), delegate to getComicByLetter
+  if (cleanLetter && !cleanGenre && !status && (!orderby || orderby === 'modified')) {
+    const letterResults = await getComicByLetter(cleanLetter, tipe, page);
+    if (letterResults && letterResults.length > 0) {
+      setCache(cacheKey, letterResults, 5 * 60 * 1000);
+      return letterResults;
     }
   }
 
-  setCache(cacheKey, result);
+  let result: Comic[] = [];
+
+  // WP REST API taxonomy ID maps
+  const tipeMap: Record<string, number> = { manga: 42, manhua: 63, manhwa: 48 };
+  const statusMap: Record<string, number> = { ongoing: 32, end: 31, hiatus: 5996, completed: 6196 };
+  const perPage = cleanLetter ? 100 : 30;
+  const offset = cleanLetter ? 0 : (page - 1) * perPage;
+
+  // 1. Resolve genre ID from pre-generated genreIdMap or dynamic WP API
+  let genreId: number | null = null;
+  if (cleanGenre) {
+    const mappedId = (genreIdMap as Record<string, number>)[cleanGenre];
+    if (mappedId) {
+      genreId = mappedId;
+    } else {
+      try {
+        const genreRes = await fetch(
+          `https://r.jina.ai/https://api.komiku.org/wp-json/wp/v2/genre?slug=${encodeURIComponent(cleanGenre)}&per_page=1`,
+          {
+            headers: { 'User-Agent': 'Mozilla/5.0', 'X-Return-Format': 'text' },
+            signal: AbortSignal.timeout(6000),
+          }
+        );
+        if (genreRes.ok) {
+          const gData = JSON.parse(await genreRes.text());
+          if (Array.isArray(gData) && gData.length > 0) genreId = gData[0].id;
+        }
+      } catch {}
+    }
+  }
+
+  // 2. Build WP REST API params
+  const wpParams: string[] = [`per_page=${perPage}`, `offset=${offset}`];
+  if (genreId) wpParams.push(`genre=${genreId}`);
+  if (tipe && tipeMap[tipe.toLowerCase()]) wpParams.push(`tipe=${tipeMap[tipe.toLowerCase()]}`);
+  if (status && statusMap[status.toLowerCase()]) wpParams.push(`statusmanga=${statusMap[status.toLowerCase()]}`);
+  if (orderby === 'meta_value_num') {
+    wpParams.push('orderby=meta_value_num', 'meta_key=rata_rata', 'order=desc');
+  } else if (orderby === 'date') {
+    wpParams.push('orderby=date', 'order=desc');
+  } else if (orderby === 'rand') {
+    wpParams.push('orderby=rand');
+  } else {
+    wpParams.push('orderby=modified', 'order=desc');
+  }
+
+  // 3. Try WP REST API via Jina proxy
+  const wpEndpoints = [
+    `https://r.jina.ai/https://api.komiku.org/wp-json/wp/v2/manga?${wpParams.join('&')}`,
+    `https://api.komiku.org/wp-json/wp/v2/manga?${wpParams.join('&')}`,
+    `https://r.jina.ai/https://komiku.org/wp-json/wp/v2/manga?${wpParams.join('&')}`,
+  ];
+
+  for (const url of wpEndpoints) {
+    if (result.length > 0) break;
+    try {
+      const isJina = url.includes('r.jina.ai');
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          ...(isJina ? { 'X-Return-Format': 'text' } : {}),
+        },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(12000),
+      });
+      if (res.ok) {
+        const text = await res.text();
+        let json: Array<{ slug: string; title: { rendered: string }; class_list?: string[] }>;
+        try { json = JSON.parse(text); } catch { continue; }
+        if (Array.isArray(json) && json.length > 0) {
+          const seen = new Set<string>();
+          for (const item of json) {
+            const rawTitle = item.title?.rendered?.replace(/<[^>]+>/g, '').trim() || '';
+            const slug = item.slug;
+            if (!rawTitle || !slug || seen.has(slug)) continue;
+
+            // Filter by letter if specified
+            if (cleanLetter) {
+              const firstChar = rawTitle.charAt(0).toUpperCase();
+              if (cleanLetter === '#') {
+                if (/^[A-Z]/i.test(firstChar)) continue;
+              } else {
+                if (firstChar !== cleanLetter) continue;
+              }
+            }
+
+            seen.add(slug);
+            const classList = item.class_list || [];
+            const typeClass = classList.find((c: string) => c.startsWith('tipe-'));
+            const itemType = typeClass
+              ? typeClass.replace('tipe-', '').charAt(0).toUpperCase() + typeClass.replace('tipe-', '').slice(1)
+              : 'Manga';
+            const endpoint = `/${slug}/`;
+            const image = buildThumbnailFromSlug(slug, rawTitle, itemType);
+            result.push({ title: rawTitle, image, type: itemType, endpoint });
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // If letter filtering was applied, paginate the in-memory results
+  if (cleanLetter && result.length > 0) {
+    const pageSize = 20;
+    const startIndex = (page - 1) * pageSize;
+    result = result.slice(startIndex, startIndex + pageSize);
+  }
+
+  // 4. Fallback: scrape genre page if genre selected and WP API didn't return items
+  if (result.length === 0 && cleanGenre) {
+    try {
+      const genrePageUrl = page > 1 
+        ? `${BASE_URL}genre/${encodeURIComponent(cleanGenre)}/page/${page}/`
+        : `${BASE_URL}genre/${encodeURIComponent(cleanGenre)}/`;
+      const $ = await fetchHTML(genrePageUrl);
+      let scraped = parseComicCards($);
+      if (cleanLetter) {
+        scraped = scraped.filter((c) => {
+          const firstChar = c.title.charAt(0).toUpperCase();
+          return cleanLetter === '#' ? !/^[A-Z]/i.test(firstChar) : firstChar === cleanLetter;
+        });
+      }
+      if (scraped.length > 0) result = scraped;
+    } catch {}
+  }
+
+  // 5. Fallback: daftar-komik
+  if (result.length === 0) {
+    try {
+      let url = page > 1 ? `${BASE_URL}daftar-komik/page/${page}/` : `${BASE_URL}daftar-komik/`;
+      const params: string[] = [];
+      if (orderby) params.push(`orderby=${orderby}`);
+      if (tipe) params.push(`tipe=${tipe}`);
+      if (cleanLetter) params.push(`huruf=${cleanLetter}`);
+      if (params.length > 0) url += '?' + params.join('&');
+      const $ = await fetchHTML(url);
+      result = parseComicCards($);
+    } catch {}
+  }
+
+  // 6. Local fallback
+  if (result.length === 0) {
+    const all = fallbackData as Comic[];
+    let filtered = all;
+    if (tipe) filtered = filtered.filter((c) => (c.type || '').toLowerCase().includes(tipe.toLowerCase()));
+    if (cleanLetter) {
+      filtered = filtered.filter((c) => {
+        const firstChar = c.title.charAt(0).toUpperCase();
+        return cleanLetter === '#' ? !/^[A-Z]/i.test(firstChar) : firstChar === cleanLetter;
+      });
+    }
+    const startIndex = (page - 1) * 15;
+    result = filtered.slice(startIndex, startIndex + 15);
+    if (result.length === 0) result = all.slice(0, 15);
+  }
+
+  setCache(cacheKey, result, 5 * 60 * 1000);
   return result;
 }
 

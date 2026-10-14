@@ -14,12 +14,7 @@ export async function GET(request: NextRequest) {
     const genre = searchParams.get('genre') || '';
     const status = searchParams.get('status') || '';
 
-    let data;
-    if (orderby || genre || status || !letter) {
-      data = await advancedFilterManga(orderby, tipe, genre, status, page);
-    } else {
-      data = await getComicByLetter(letter, tipe, page);
-    }
+    const data = await advancedFilterManga(orderby, tipe, genre, status, page, letter);
 
     if (!data || data.length === 0) {
       return apiError('Data not found');

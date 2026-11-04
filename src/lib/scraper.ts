@@ -25,6 +25,29 @@ const DEFAULT_HEADERS = {
   'Upgrade-Insecure-Requests': '1',
 };
 
+export class ScraperNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ScraperNotFoundError';
+  }
+}
+
+function isCloudflareBlock(html: string): boolean {
+  if (!html || html.length < 300) return true;
+  const lower = html.toLowerCase();
+  return (
+    lower.includes('attention required! | cloudflare') ||
+    lower.includes('<title>just a moment...</title>') ||
+    lower.includes('sorry, you have been blocked') ||
+    lower.includes('you are unable to access') ||
+    lower.includes('checking your browser before accessing') ||
+    lower.includes('cf-browser-verification') ||
+    (lower.includes('cloudflare ray id') && lower.includes('performance & security by')) ||
+    lower.includes('data-translate="block_headline"') ||
+    (lower.includes('enable cookies') && lower.includes('cf-alert'))
+  );
+}
+
 function toTranslateGoogUrl(url: string): string {
   try {
     const u = new URL(url);
@@ -49,46 +72,7 @@ async function fetchHTML(url: string): Promise<cheerio.CheerioAPI> {
       'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
   };
 
-  // 1. Primary: Jina AI Reader Proxy - Bypasses Cloudflare bot protection & datacenter IP blocks completely
-  try {
-    const jinaUrl = `https://r.jina.ai/${url}`;
-    const res = await fetch(jinaUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)',
-        'X-Return-Format': 'html',
-      },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (res.ok) {
-      const html = await res.text();
-      if (html && html.length > 500 && !html.includes('Attention Required! | Cloudflare')) {
-        return cheerio.load(html);
-      }
-    }
-  } catch {
-    // try fallbacks
-  }
-
-  // 2. Secondary: Optional ScraperAPI (if SCRAPER_API_KEY is configured in env)
-  if (process.env.SCRAPER_API_KEY) {
-    try {
-      const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
-      const res = await fetch(proxyUrl, {
-        cache: 'no-store',
-        signal: AbortSignal.timeout(15000),
-      });
-      if (res.ok) {
-        const html = await res.text();
-        if (html && html.length > 500) {
-          return cheerio.load(html);
-        }
-      }
-    } catch {}
-  }
-
-  // 3. Direct fetch with browser headers
+  // 1. Primary: Direct fetch with browser headers
   try {
     const res = await fetch(url, {
       headers: {
@@ -96,35 +80,111 @@ async function fetchHTML(url: string): Promise<cheerio.CheerioAPI> {
         Referer: 'https://komiku.org/',
       },
       cache: 'no-store',
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(4500),
     });
+
+    if (res.status === 404) {
+      throw new ScraperNotFoundError(`404 Not Found at ${url}`);
+    }
 
     if (res.ok) {
       const html = await res.text();
-      if (html && html.length > 500 && !html.includes('Attention Required! | Cloudflare')) {
+      if (!isCloudflareBlock(html) && html.length > 500) {
         return cheerio.load(html);
       }
     }
-  } catch {
-    // direct fetch failed
+  } catch (err) {
+    if (err instanceof ScraperNotFoundError) throw err;
+    // direct fetch failed or challenged, fallback to proxy
   }
 
-  // 4. Fallback: Google Translate Mirror (.translate.goog)
+  // 2. Secondary: Google Translate Mirror (.translate.goog) - high speed and reliably bypasses Cloudflare
   try {
     const googUrl = toTranslateGoogUrl(url);
     const res = await fetch(googUrl, {
       headers: fetchHeaders,
       cache: 'no-store',
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(6000),
     });
+
+    if (res.status === 404) {
+      throw new ScraperNotFoundError(`404 Not Found at ${url}`);
+    }
 
     if (res.ok) {
       const html = await res.text();
-      if (html && html.length > 500 && !html.includes('<title>Translate</title>') && !html.includes('Attention Required! | Cloudflare')) {
+      if (!isCloudflareBlock(html) && html.length > 500 && !html.includes('<title>Translate</title>')) {
         return cheerio.load(html);
       }
     }
-  } catch {}
+  } catch (err) {
+    if (err instanceof ScraperNotFoundError) throw err;
+  }
+
+  // 3. Optional ScraperAPI (if SCRAPER_API_KEY is configured in env)
+  if (process.env.SCRAPER_API_KEY) {
+    try {
+      const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
+      const res = await fetch(proxyUrl, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.status === 404) throw new ScraperNotFoundError(`404 at ${url}`);
+      if (res.ok) {
+        const html = await res.text();
+        if (!isCloudflareBlock(html) && html.length > 500) {
+          return cheerio.load(html);
+        }
+      }
+    } catch (err) {
+      if (err instanceof ScraperNotFoundError) throw err;
+    }
+  }
+
+  // 4. Tertiary: Google Translate Web Proxy
+  try {
+    const proxyUrl = `https://translate.google.com/website?sl=en&tl=id&hl=id&client=webapp&u=${encodeURIComponent(url)}`;
+    const res = await fetch(proxyUrl, {
+      headers: fetchHeaders,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(6000),
+    });
+
+    if (res.status === 404) throw new ScraperNotFoundError(`404 at ${url}`);
+
+    if (res.ok) {
+      const html = await res.text();
+      if (!isCloudflareBlock(html) && html.length > 500) {
+        return cheerio.load(html);
+      }
+    }
+  } catch (err) {
+    if (err instanceof ScraperNotFoundError) throw err;
+  }
+
+  // 5. Fallback: Jina AI Reader Proxy (last resort)
+  try {
+    const jinaUrl = `https://r.jina.ai/${url}`;
+    const res = await fetch(jinaUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'X-Return-Format': 'html',
+      },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(4000),
+    });
+
+    if (res.status === 404) throw new ScraperNotFoundError(`404 at ${url}`);
+
+    if (res.ok) {
+      const html = await res.text();
+      if (!isCloudflareBlock(html) && html.length > 500) {
+        return cheerio.load(html);
+      }
+    }
+  } catch (err) {
+    if (err instanceof ScraperNotFoundError) throw err;
+  }
 
   throw new Error(`Failed to fetch HTML from ${url}`);
 }
@@ -1051,79 +1111,110 @@ export async function getListChapter(endpoint: string): Promise<Chapter[]> {
 }
 
 export async function getChapterDetail(endpoint: string): Promise<ChapterDetail> {
-  const cacheKey = `chapter_detail_${endpoint}`;
+  const cleanEp = endpoint.replace(/^\/+|\/+$/g, '').replace(/^manga\//, '');
+  const cacheKey = `chapter_detail_${cleanEp}`;
   const cached = getCache<ChapterDetail>(cacheKey);
-  if (cached) return cached;
+  if (cached && cached.image && cached.image.length > 0) return cached;
 
-  const safeEndpoint = endpoint.replace(/^\/+|\/+$/g, '');
-  const url = `${BASE_URL}${safeEndpoint}/`;
-
-  let images: string[] = [];
-  let title = '';
-  let next_chapter: string | undefined;
-  let prev_chapter: string | undefined;
-
-  try {
-    const $ = await fetchHTML(url);
-    $('#Baca_Komik img, .reader-area img, #chimg-auh img').each((_, el) => {
-      let src = $(el).attr('src') || $(el).attr('data-src') || '';
-      if (src && !src.includes('lazy.jpg') && !src.includes('lazy.png')) {
-        // Filter out promotional/banner images
-        if (src.includes('komiku-promosi') || src.includes('banner') || src.includes('promo')) return;
-        if (src.includes('translate.goog')) {
-          src = src.replace(/https?:\/\/([a-z0-9-]+)\.translate\.goog/i, (_, host) => `https://${host.replace(/-/g, '.')}`);
+  // Build candidate slugs: komiku sometimes uses chapter-1 (e.g. ao-ashi, one-piece)
+  // and sometimes chapter-01 / chapter-001 (e.g. magic-emperor, boruto).
+  const candidates: string[] = [cleanEp];
+  const match = cleanEp.match(/^(.*-(?:chapter|ch)-)(\d+)(.*)$/i);
+  if (match) {
+    const [, prefix, numStr, suffix] = match;
+    const num = parseInt(numStr, 10);
+    if (!isNaN(num)) {
+      const variants = [
+        `${prefix}${num}${suffix}`,
+        `${prefix}${String(num).padStart(2, '0')}${suffix}`,
+        `${prefix}${String(num).padStart(3, '0')}${suffix}`,
+      ];
+      for (const v of variants) {
+        if (!candidates.includes(v)) {
+          candidates.push(v);
         }
-        if (src.includes('thumbnail.komiku.to')) {
-          src = src.replace('thumbnail.komiku.to', 'thumbnail.komiku.org');
-        }
-        images.push(src);
       }
-    });
-
-    // h1 has the correct title (e.g. "Magic Emperor Chapter 921")
-    // .judulbaca returns "Baca Online" which we skip
-    title = $('h1').first().text().trim();
-    if (!title || title.toLowerCase().startsWith('baca')) {
-      title = $('.mk-chapter__title, .chapter-title').first().text().trim();
     }
-
-    // Next/Prev chapter: komiku uses aria-label="Prev" / aria-label="Next" on <a class="btn">
-    // The "Prev" link (lower chapter number) is usually shown for the "previous" chapter
-    // and "Next" is not present when on the latest chapter
-    $('a[aria-label="Prev"], a.rl').each((_, el) => {
-      const href = $(el).attr('href');
-      if (href && !prev_chapter && !href.includes('#')) {
-        prev_chapter = cleanEndpoint(href);
-      }
-    });
-
-    $('a[aria-label="Next"]').each((_, el) => {
-      const href = $(el).attr('href');
-      if (href && !next_chapter && !href.includes('#')) {
-        next_chapter = cleanEndpoint(href);
-      }
-    });
-    
-    // Fallback: old selectors
-    if (!prev_chapter && !next_chapter) {
-      $('a:contains("Next"), a:contains("Next Chapter"), a.nx').each((_, el) => {
-        const href = $(el).attr('href');
-        if (href && !next_chapter && !href.includes('#')) next_chapter = cleanEndpoint(href);
-      });
-      $('a:contains("Prev"), a:contains("Prev Chapter"), a.pr').each((_, el) => {
-        const href = $(el).attr('href');
-        if (href && !prev_chapter && !href.includes('#')) prev_chapter = cleanEndpoint(href);
-      });
-    }
-  } catch {}
-
-  if (!title) {
-    title = safeEndpoint.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
   }
 
-  const detail: ChapterDetail = { title, image: images, next_chapter, prev_chapter };
-  if (images.length > 0) {
-    setCache(cacheKey, detail, 30 * 60 * 1000);
+  for (const candidate of candidates) {
+    const url = `${BASE_URL}${candidate}/`;
+    let images: string[] = [];
+    let title = '';
+    let next_chapter: string | undefined;
+    let prev_chapter: string | undefined;
+
+    try {
+      const $ = await fetchHTML(url);
+      $('#Baca_Komik img, .reader-area img, #chimg-auh img, .content-baca img').each((_, el) => {
+        let src = $(el).attr('src') || $(el).attr('data-src') || '';
+        if (src && !src.includes('lazy.jpg') && !src.includes('lazy.png')) {
+          // Filter out promotional/banner images
+          if (src.includes('komiku-promosi') || src.includes('banner') || src.includes('promo')) return;
+          if (src.includes('translate.goog')) {
+            src = src.replace(/https?:\/\/([a-z0-9-]+)\.translate\.goog/i, (_, host) => `https://${host.replace(/-/g, '.')}`);
+          }
+          if (src.includes('thumbnail.komiku.to')) {
+            src = src.replace('thumbnail.komiku.to', 'thumbnail.komiku.org');
+          }
+          if (src.startsWith('//')) {
+            src = `https:${src}`;
+          }
+          images.push(src);
+        }
+      });
+
+      if (images.length > 0) {
+        // h1 has the correct title (e.g. "Magic Emperor Chapter 921")
+        title = $('h1').first().text().trim();
+        if (!title || title.toLowerCase().startsWith('baca')) {
+          title = $('.mk-chapter__title, .chapter-title').first().text().trim();
+        }
+        if (!title) {
+          title = candidate.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+        }
+
+        // Prev chapter: strictly aria-label="Prev" or class "pr"
+        $('a[aria-label="Prev"], a.pr').each((_, el) => {
+          const href = $(el).attr('href');
+          if (href && !prev_chapter && !href.includes('#')) {
+            prev_chapter = cleanEndpoint(href);
+          }
+        });
+
+        // Next chapter: strictly aria-label="Next" or class "nx"
+        $('a[aria-label="Next"], a.nx').each((_, el) => {
+          const href = $(el).attr('href');
+          if (href && !next_chapter && !href.includes('#')) {
+            next_chapter = cleanEndpoint(href);
+          }
+        });
+
+        // Fallback: search text "Prev" / "Next" if not found
+        if (!prev_chapter && !next_chapter) {
+          $('a:contains("Next"), a:contains("Next Chapter")').each((_, el) => {
+            const href = $(el).attr('href');
+            if (href && !next_chapter && !href.includes('#')) next_chapter = cleanEndpoint(href);
+          });
+          $('a:contains("Prev"), a:contains("Prev Chapter")').each((_, el) => {
+            const href = $(el).attr('href');
+            if (href && !prev_chapter && !href.includes('#')) prev_chapter = cleanEndpoint(href);
+          });
+        }
+
+        const detail: ChapterDetail = { title, image: images, next_chapter, prev_chapter };
+        // Cache under both the requested endpoint and the resolved candidate
+        setCache(cacheKey, detail, 30 * 60 * 1000);
+        if (candidate !== cleanEp) {
+          setCache(`chapter_detail_${candidate}`, detail, 30 * 60 * 1000);
+        }
+        return detail;
+      }
+    } catch {
+      // try next candidate
+    }
   }
-  return detail;
+
+  const fallbackTitle = cleanEp.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+  return { title: fallbackTitle, image: [] };
 }

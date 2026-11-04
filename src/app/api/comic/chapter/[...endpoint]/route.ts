@@ -1,13 +1,15 @@
 import { getChapterDetail } from '@/lib/scraper';
 import { apiSuccess, apiError } from '@/lib/response';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ endpoint: string[] }> }
 ) {
   try {
     const { endpoint } = await params;
-    const fullEndpoint = endpoint.join('/');
+    const fullEndpoint = decodeURIComponent(endpoint.join('/'));
 
     const data = await getChapterDetail(fullEndpoint);
     if (!data || !data.image || data.image.length === 0) {

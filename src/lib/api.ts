@@ -31,13 +31,13 @@ export const fetchGenres = async () => {
 };
 
 export const fetchComicInfo = async (endpoint: string) => {
-  const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
+  const cleanEndpoint = endpoint.replace(/^\/+|\/+$/g, '');
   const res = await fetch(`/api/comic/info/${cleanEndpoint}`);
   return res.json();
 };
 
 export const fetchChapterDetail = async (endpoint: string) => {
-  const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
+  const cleanEndpoint = endpoint.replace(/^\/+|\/+$/g, '');
   const res = await fetch(`/api/comic/chapter/${cleanEndpoint}`);
   return res.json();
 };

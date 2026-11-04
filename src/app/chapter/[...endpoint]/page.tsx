@@ -97,7 +97,44 @@ export default function ChapterReaderPage({ params }: { params: Promise<{ endpoi
   }, [fullEndpoint]);
 
   if (loading) return <Loader />;
-  if (!chapter) return <div className="container" style={{ marginTop: '2rem' }}>Chapter not found.</div>;
+  if (!chapter) {
+    return (
+      <div className="container" style={{ marginTop: '4rem', textAlign: 'center', padding: '2rem' }}>
+        <div className="glass-panel" style={{ padding: '2.5rem', maxWidth: '480px', margin: '0 auto', borderRadius: '16px' }}>
+          <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem', color: 'var(--text-primary)' }}>Chapter Tidak Ditemukan</h2>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', lineHeight: '1.6' }}>
+            Chapter ini belum tersedia atau sedang mengalami kendala saat memuat gambar.
+          </p>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => {
+                setLoading(true);
+                fetchChapterDetail(fullEndpoint)
+                  .then((res) => {
+                    if (res?.success && res?.data) {
+                      setChapter(res.data);
+                    }
+                  })
+                  .catch(() => {})
+                  .finally(() => setLoading(false));
+              }}
+              className="action-btn btn-primary"
+              style={{ padding: '0.6rem 1.2rem', borderRadius: '10px' }}
+            >
+              Coba Lagi
+            </button>
+            <button
+              onClick={() => (cleanComic ? router.push(`/comic/${encodeURIComponent(cleanComic)}`) : router.back())}
+              className="action-btn btn-secondary"
+              style={{ padding: '0.6rem 1.2rem', borderRadius: '10px' }}
+            >
+              Kembali
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const prevClean = chapter.prev_chapter ? normalizeSlug(chapter.prev_chapter) : null;
   const nextClean = chapter.next_chapter ? normalizeSlug(chapter.next_chapter) : null;
